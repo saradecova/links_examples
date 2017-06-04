@@ -152,35 +152,47 @@ module Components {
   }
 
   fun chooseRoom(ap) {
-    fun makeRadioRec(rooms, handler) {
-      switch(rooms) {
-        case [] -> <#/>
-        case x::xs ->
-          var Room(roomStr) = x;
-          <#><input type="radio" name="room"
-                    l:onchange="{handler ! Room(roomStr)}"/>
-          {stringToXml(roomStr)}<br/>
-          {makeRadioRec(xs, handler)}</#>
-      }
+    fun makeRoomForm(rooms, handlerFn) {
+      fun makeRadioRec(rooms) {
+            switch(rooms) {
+              case [] -> <#/>
+              case x::xs ->
+                var Room(roomStr) = x;
+                <#>
+                  <input type="radio" name="room"
+                    l:onchange="{ handlerFn ! Room(roomStr)}"/>
+                { stringToXml(roomStr) } <br/>
+                { makeRadioRec(xs) } </#>
+            }
+          }
+      var radios = makeRadioRec(rooms);
+      <#>
+      <form id="rooms" l:onsubmit="{ handlerFn ! Submit()}">
+          <input id="startButton" type="radio" name="room" checked="checked"
+                 l:onchange="{ handlerFn ! Room("\\NewRoom")}"/>New
+          <input id="newRoomText" type="text" value=""/><br/>
+          <p>
+            { makeRadioRec(rooms) }
+            <input type="submit" name="submitButton" value="Enter"/>
+          </p>
+      </form>
+      </#>
     }
 
-    # keeps track of the radio button currently clicked
-    # (TODO: extract the information from DomNodes after submission)
-    # At submission, sends the roomname to the server and proceeds to name setup
-    fun handleRoomSelect(s, roomStr) {
+    fun roomSelectLoop(s, roomStr) {
       receive {
         case Room(newRoomStr) ->
-          handleRoomSelect(s, newRoomStr)
+          roomSelectLoop(s, newRoomStr)
         case Submit() ->
           # if the user wants to create a new room, extract the room name
           # from the text field
           if (roomStr == "\\NewRoom") {
-            var newRoom =getInputContents("newRoomText");
+            var newRoom = getInputContents("newRoomText");
             # validate newRoom name (if non-empty)
             # TODO: check against existing room names
             if (newRoom == "") {
               print("Please, specify the name of a new room.");
-              handleRoomSelect(s, roomStr)
+              roomSelectLoop(s, roomStr)
             } else {
               nameBox(send(Room(roomStr), select NewRoom s))
             }
@@ -189,28 +201,29 @@ module Components {
             print("Send exisitng");
             nameBox(s)
           }
-      }
+        }
     }
 
-    # get all available rooms from teh server and pick one via radio buttons
-    var s = request(ap);
-    var (rooms, s) = receive(s);
-    var roomHandler = spawnClient {handleRoomSelect(s, "\\NewRoom")};
+    # keeps track of the radio button currently clicked
+    # (TODO: extract the information from DomNodes after submission)
+    # At submission, sends the roomname to the server and proceeds to name setup
+    fun doSetup(roomStr) {
+      # On the client, request from the given access point
+      var s = request(ap);
+      # Next, grab the list of rooms
+      var (rooms, s) = receive(s);
+      # Spawn the handler function
+      var roomHandler = spawnClient { roomSelectLoop(s, roomStr) };
 
-    <#>
-      <div id="roomSelect">
-        <p> Choose one of the existing rooms or create a new one </p>
-        <form id="rooms" l:onsubmit="{roomHandler ! Submit()}">
-          <input id="startButton" type="radio" name="room" checked="checked"
-                 l:onchange="{roomHandler ! Room("\\NewRoom")}"/>New
-          <input id="newRoomText" type="text" value=""/><br/>
-          {print("Inside mainpage html"); makeRadioRec(rooms, roomHandler)}
-          <p>
-            <input type="submit" name="submitButton" value="Enter"/>
-          </p>
-        </form>
-      </div>
-    </#>
+      # Next, populate the placeholder with the received rooms
+      var generated_radio_dom = makeRoomForm(rooms, roomHandler);
+      debug("about to evaluate replaceNode");
+      replaceNode(generated_radio_dom, getNodeById("room_placeholder"));
+    }
+
+    # {print("Inside mainpage html"); makeRadioRec(rooms, roomHandler)}
+    # get all available rooms from teh server and pick one via radio buttons
+    doSetup("\\NewRoom");
   }
 }
 
@@ -220,7 +233,7 @@ open Components
 
 fun mainPage(ap) {
   # oh dear, Simon attempts front-end webdev
-  print("starting");
+  var _ = spawnClient { chooseRoom(ap) };
   page
     <html>
       <head>
@@ -249,7 +262,10 @@ fun mainPage(ap) {
 
       <div id="main" class="container marketing">
         <div class="row featurette">
-          { chooseRoom(ap) }
+          <div id="roomSelect">
+            <p> Choose one of the existing rooms or create a new one </p>
+                      <div id="room_placeholder"></div>
+          </div>
         </div>
       </div>
     </html>

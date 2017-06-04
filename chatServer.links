@@ -1,0 +1,202 @@
+open ChatSessions
+open ChatClient
+
+## clientHandler loop: Reads incoming requests from the client, dispatches
+## each command to the serverLoop which will broadcast to other session clients.
+# Alas, we can't make this an inner function at the moment since we need a type
+# annotation, and type annotations are broken for inner functions at the moment
+fun clientHandlerLoop(room, nick, clientToServerChan, loopPid) {
+
+  offer(clientToServerChan) {
+    case ChatMessage(clientToServerChan) ->
+      var (msg, clientToServerChan) = receive(clientToServerChan);
+      loopPid ! BroadcastMessage(room, nick, msg);
+      clientHandlerLoop(room, nick, clientToServerChan, loopPid)
+    case ChangeTopic(clientToServerChan) ->
+      var (newTopic, clientToServerChan) = receive(clientToServerChan);
+      loopPid ! BroadcastChangeTopic(room, newTopic);
+      clientHandlerLoop(room, nick, clientToServerChan, loopPid)
+  }
+}
+
+
+# Process that is spawned to handle messages from the chat client.
+fun clientHandler(room, nick, chatServerRecvEnd, serverToClientRecvEnd, loopPid) {
+
+  # Get the current topic and nicks
+  print("In clientHandler");
+  loopPid ! GetServerState(room, self());
+  print("received own state");
+  var (topic, nicks) = receive { case st -> st };
+  var Topic(topicStr) = topic;
+  print("Topic "^^topicStr);
+  print(intToString(length(nicks)));
+  print("Got topics from main loop");
+
+  # Send topic, nicks, and outgoing channel
+  var chatServerRecvEnd =
+    send((topic, nicks, serverToClientRecvEnd), chatServerRecvEnd);
+  print("Sent all the stuff to the client");
+
+  clientHandlerLoop(room, nick, chatServerRecvEnd, loopPid)
+}
+
+fun clientSendHandler(s) {
+  receive {
+    case DeliverMessage(nick, msg) ->
+      var s = select IncomingChatMessage s;
+      var s = send((nick, msg), s);
+      clientSendHandler(s)
+    case DeliverNewUser(nick) ->
+      var s = select NewUser s;
+      var s = send(nick, s);
+      clientSendHandler(s)
+    case DeliverNewTopic(topic) ->
+      var s = select NewTopic s;
+      var s = send(topic, s);
+      clientSendHandler(s)
+    case DeliverUserLeft(nick) ->
+      var s = select UserLeft s;
+      var s = send(nick, s);
+      clientSendHandler(s)
+  }
+}
+
+# Broadcasts a given message to the mailboxes of a list of PIDs
+fun broadcastMessage(msg, pids) {
+  switch(pids) {
+    case [] -> ()
+    case pid :: pids -> pid ! msg; broadcastMessage(msg, pids)
+  }
+}
+
+# finds pids (clinets) in a particular room
+fun getItemsByRoom(theRoom, rooms, l) {
+  switch(rooms) {
+    case [] -> []
+    case x::xs -> if (x == theRoom) hd(l)
+                 else getItemsByRoom(theRoom, xs, tl(l))
+  }
+}
+
+fun getTopicByRoom(theRoom, rooms, topics) {
+  switch(rooms) {
+    case [] -> Topic("")
+    case x::xs -> if (x == theRoom) hd(topics)
+                 else getTopicByRoom(theRoom, xs, tl(topics))
+  }
+}
+
+
+
+fun addNickByRoom(room, rooms, nick, nicks) {
+  switch(rooms) {
+    case [] -> []
+    case x::xs -> if (x == room) (nick::hd(nicks))::tl(nicks)
+                  else addNickByRoom(room, xs, nick, tl(nicks))
+  }
+}
+
+fun addPidByRoom(room, rooms, pid, pids) {
+  switch(rooms) {
+      case [] -> []
+      case x::xs -> if (x == room) (pid::hd(pids))::tl(pids)
+                    else addPidByRoom(room, xs, pid, tl(pids))
+  }
+}
+
+fun changeTopicByRoom(room, rooms, newTopic, topics) {
+  switch(rooms) {
+    case [] -> []
+    case x::xs -> if (x == room) newTopic::tl(topics)
+                  else changeTopicByRoom(room, xs, newTopic, tl(topics))
+  }
+}
+
+# Main server loop, containing server state. Awaits (non-session) control
+# messages to update the state, or broadcast instructions to send things
+# along session channels.
+fun serverLoop(rooms, topics, nicks, pids) server {
+  print("Server loop started");
+  receive {
+    case BroadcastMessage(room, nick, msg) ->
+      broadcastMessage(DeliverMessage(nick, msg),
+                       getItemsByRoom(room, rooms, pids));
+      serverLoop(rooms, topics, nicks, pids)
+    case BroadcastChangeTopic(room, newTopic) ->
+      broadcastMessage(DeliverNewTopic(newTopic),
+                       getItemsByRoom(room, rooms, pids));
+      serverLoop(rooms, changeTopicByRoom(room, rooms, newTopic, topics),
+                 nicks, pids)
+    case NewClient(room, nick, pid) ->
+      broadcastMessage(DeliverNewUser(nick),
+                       getItemsByRoom(room, rooms, pids));
+      serverLoop(rooms, topics,
+                 addNickByRoom(room, rooms, nick, nicks),
+                 addPidByRoom(room, rooms, pid, pids))
+    case GetServerState(room, pid) ->
+      pid ! (getTopicByRoom(room, rooms, topics),
+             getItemsByRoom(room, rooms, nicks));
+      serverLoop(rooms, topics, nicks, pids)
+    case NewRoom(room) ->
+      serverLoop(room::rooms, Topic("Topic")::topics, []::nicks, []::pids)
+    case GetRooms(pid) ->
+      print("getting rooms");
+      pid ! (rooms);
+      serverLoop(rooms, topics, nicks, pids)
+  }
+}
+
+fun handleNickname(room, s, loopPid) {
+  # Get the name and incoming message channel of the new client
+  var (name, s) = receive(s);
+
+  # Fork off the client handler,
+  var serverToClientSendEnd = linFork(
+    linfun (serverToClientRecvEnd) {
+     clientHandler(room, name, s, serverToClientRecvEnd, loopPid)
+  });
+
+  # Fork off client send handler
+  var clientSendHandlerPid = spawn { clientSendHandler(serverToClientSendEnd) };
+
+  # Register with the main loop, and recurse
+  loopPid ! NewClient(room, name, clientSendHandlerPid);
+}
+
+fun handleRoom(roomsSenderEnd, loopPid) server {
+  # get all available rooms
+  var rooms = spawnWait { loopPid ! GetRooms(self()) ; receive { case n -> n }};
+  # send the rooms to the client.
+  var s = send(rooms, roomsSenderEnd);
+
+  # get the room selection from the client
+  offer(s) {
+      case NewRoom(s) ->
+        var (r,s) = receive(s);
+        loopPid ! NewRoom(r);
+        handleNickname(r, s, loopPid)
+      case ExistingRoom(s) ->
+        var (r,s) = receive(s);
+        handleNickname(r, s, loopPid)
+  }
+}
+
+fun clientAcceptor(ap, loopPid) server {
+  # Accept a new client
+  var s = accept(ap);
+  var _ = spawn { handleRoom(s, loopPid) };
+  clientAcceptor(ap, loopPid)
+}
+
+fun main() {
+  var clientAP = new();
+  var loopPid = spawn { serverLoop([Room("room1"), Room("room2")], [Topic("hello"), Topic("By")], [[],[]], [[],[]]) };
+  var _ = spawn { clientAcceptor(clientAP, loopPid) };
+  addRoute("/", fun (_, _) { ChatClient.mainPage(clientAP) } );
+  addStaticRoute("/css", "css", [("css", "text/css")]);
+  serveWebsockets();
+  servePages()
+}
+
+main()

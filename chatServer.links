@@ -81,7 +81,14 @@ fun getTopicByRoom(theRoom, rooms, topics) {
   }
 }
 
-
+fun addModeratorByRoom(room, rooms, nick, moderators) {
+  switch(rooms) {
+    case [] -> []
+    case x::xs -> if (x == room && hd(moderators) == []) {
+      [nick]::tl(moderators)
+    } else addModeratorByRoom(room, xs, nick, tl(moderators))
+  }
+}
 
 fun addNickByRoom(room, rooms, nick, nicks) {
   switch(rooms) {
@@ -110,33 +117,37 @@ fun changeTopicByRoom(room, rooms, newTopic, topics) {
 # Main server loop, containing server state. Awaits (non-session) control
 # messages to update the state, or broadcast instructions to send things
 # along session channels.
-fun serverLoop(rooms, topics, nicks, pids) server {
+fun serverLoop(rooms, moderators, topics, nicks, pids) server {
   receive {
     case BroadcastMessage(room, nick, msg) ->
       broadcastMessage(DeliverMessage(nick, msg),
                        getItemsByRoom(room, rooms, pids));
-      serverLoop(rooms, topics, nicks, pids)
+      serverLoop(rooms, moderators, topics, nicks, pids)
     case BroadcastChangeTopic(room, newTopic) ->
       broadcastMessage(DeliverNewTopic(newTopic),
                        getItemsByRoom(room, rooms, pids));
-      serverLoop(rooms, changeTopicByRoom(room, rooms, newTopic, topics),
+      serverLoop(rooms, moderators,
+                 changeTopicByRoom(room, rooms, newTopic, topics),
                  nicks, pids)
     case NewClient(room, nick, pid) ->
       broadcastMessage(DeliverNewUser(nick),
                        getItemsByRoom(room, rooms, pids));
-      serverLoop(rooms, topics,
+      serverLoop(rooms,
+                 addModeratorByRoom(room, rooms, nick, moderators),
+                 topics,
                  addNickByRoom(room, rooms, nick, nicks),
                  addPidByRoom(room, rooms, pid, pids))
     case GetServerState(room, pid) ->
       pid ! (room,
              getTopicByRoom(room, rooms, topics),
              getItemsByRoom(room, rooms, nicks));
-      serverLoop(rooms, topics, nicks, pids)
+      serverLoop(rooms, moderators, topics, nicks, pids)
     case NewRoom(room) ->
-      serverLoop(room::rooms, Topic("hello")::topics, []::nicks, []::pids)
+      serverLoop(room::rooms, []::moderators, Topic("hello")::topics,
+                 []::nicks, []::pids)
     case GetRooms(pid) ->
       pid ! (rooms);
-      serverLoop(rooms, topics, nicks, pids)
+      serverLoop(rooms, moderators, topics, nicks, pids)
   }
 }
 
@@ -184,7 +195,7 @@ fun clientAcceptor(ap, loopPid) server {
 
 fun main() {
   var clientAP = new();
-  var loopPid = spawn { serverLoop([], [], [], []) };
+  var loopPid = spawn { serverLoop([], [], [], [], []) };
   var _ = spawn { clientAcceptor(clientAP, loopPid) };
   addRoute("/", fun (_, _) { ChatClient.mainPage(clientAP) } );
   addStaticRoute("/css", "css", [("css", "text/css")]);

@@ -19,8 +19,12 @@ typename ReceiveCommand =
 
 typename ChatServer = ?(Nickname). !(Room, Topic, [Nickname], ~ServerToClientChannel) . ReceiveCommand;
 
+typename ModeratorChannel =
+  [&| RemoveUser : ?(Nickname) . ModeratorChannel,
+      MuteUser : ?(Nickname) . ModeratorChannel |&];
+
 typename ReceiveRoomCommand =
-  [&| NewRoom : ?(Room) . ChatServer,
+  [&| NewRoom : ?(Room) . !(ModeratorChannel) . ChatServer,
       ExistingRoom : ?(Room) . ChatServer |&];
 
 typename RoomsSend = !([Room]) . ReceiveRoomCommand;

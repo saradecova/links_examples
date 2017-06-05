@@ -19,6 +19,12 @@ module DomFunctions {
 open DomFunctions
 
 module Components {
+  fun moderatorLoop(room, channel) {
+    receive {
+      case _ -> moderatorLoop(room, channel)
+    }
+  }
+
   fun displayChatBox(room, topic, nicks, incomingMsgChan, outgoingMsgChan) {
     var Room(roomStr) = room;
     var Topic(topicStr) = topic;
@@ -192,7 +198,10 @@ module Components {
             if (roomStr == "") {
               roomSelectLoop(s, roomStr)
             } else {
-              nameBox(send(Room(roomStr), select NewRoom s))
+              var s = send(Room(roomStr), select NewRoom s);
+              var (moderatorChannel, s) = receive(s);
+              var _ = spawn { moderatorLoop(Room(roomStr), moderatorChannel) };
+              nameBox(s)
             }
           } else {
             var s = send(Room(roomStr), select ExistingRoom s);

@@ -56,6 +56,19 @@ fun clientSendHandler(s) {
   }
 }
 
+fun moderatorHandler(room, channel, loopPid) {
+  offer(channel) {
+    case RemoveUser(channel) ->
+      var (nick, channel) = receive(channel);
+      #loopPid ! RemoveUser(room, nick);
+      moderatorHandler(room, channel, loopPid)
+    case MuteUser(channel) ->
+      var (nick, channel) = receive(channel);
+      # loopPid ! MuteUser(room, nick);
+      moderatorHandler(room, channel, loopPid)
+  }
+}
+
 # Broadcasts a given message to the mailboxes of a list of PIDs
 fun broadcastMessage(msg, pids) {
   switch(pids) {
@@ -84,9 +97,8 @@ fun getTopicByRoom(theRoom, rooms, topics) {
 fun addModeratorByRoom(room, rooms, nick, moderators) {
   switch(rooms) {
     case [] -> []
-    case x::xs -> if (x == room && hd(moderators) == []) {
-      [nick]::tl(moderators)
-    } else addModeratorByRoom(room, xs, nick, tl(moderators))
+    case x::xs -> if (x == room && hd(moderators) == []) [nick]::tl(moderators)
+                  else addModeratorByRoom(room, xs, nick, tl(moderators))
   }
 }
 
@@ -179,6 +191,11 @@ fun handleRoom(roomsSenderEnd, loopPid) server {
       case NewRoom(s) ->
         var (r,s) = receive(s);
         loopPid ! NewRoom(r);
+        var moderatorChannelSendEnd = fork(
+          fun (moderatorChannelRecvEnd) {
+            moderatorHandler(r, moderatorChannelRecvEnd, loopPid)
+        });
+        var s = send(moderatorChannelSendEnd, s);
         handleNickname(r, s, loopPid)
       case ExistingRoom(s) ->
         var (r,s) = receive(s);

@@ -161,14 +161,14 @@ module Components {
                 <#>
                   <input type="radio" name="room"
                     l:onchange="{ handlerFn ! Room(roomStr)}"/>
-                { stringToXml(roomStr) } <br/>
+                    { stringToXml(roomStr) } <br/>
                 { makeRadioRec(xs) } </#>
             }
           }
       <#>
       <form id="rooms" l:onsubmit="{ handlerFn ! Submit()}">
           <input id="startButton" type="radio" name="room" checked="checked"
-                 l:onchange="{ handlerFn ! Room("/newRoom")}"/>New
+                 l:onchange="{ handlerFn ! Room("/newRoom")}"/> New
           <input id="newRoomText" type="text" value=""/><br/>
             { makeRadioRec(rooms) }
           <p>

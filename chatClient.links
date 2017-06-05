@@ -184,28 +184,28 @@ module Components {
       </#>
     }
 
-    fun roomSelectLoop(s, roomStr) {
+    fun roomSelectLoop(s, roomStr, rooms) {
+      fun member(elem , l) {
+        switch(l) {
+          case [] -> false
+          case (x::xs) -> x == elem || member(elem, xs)
+        }
+      }
+
       receive {
-        case Room(newRoomStr) ->
-          roomSelectLoop(s, newRoomStr)
+        case Room(roomStr) ->
+          roomSelectLoop(s, roomStr, rooms)
         case Submit() ->
           # if the user wants to create a new room, extract the room name
           # from the text field
           if (roomStr == "/newRoom") {
             var roomStr = getInputContents("newRoomText");
-            # validate newRoom name (if non-empty)
-            # TODO: check against existing room names
-            if (roomStr == "") {
-              roomSelectLoop(s, roomStr)
-            } else {
-              var s = send(Room(roomStr), select NewRoom s);
-              var (moderatorChannel, s) = receive(s);
-              var _ = spawn { moderatorLoop(Room(roomStr), moderatorChannel) };
-              nameBox(s)
-            }
+            if (roomStr == "" || member(Room(roomStr), rooms))
+              roomSelectLoop(s, roomStr, rooms)
+            else
+              nameBox(send(Room(roomStr), s))
           } else {
-            var s = send(Room(roomStr), select ExistingRoom s);
-            nameBox(s)
+            nameBox(send(Room(roomStr), s))
           }
         }
     }
@@ -219,7 +219,7 @@ module Components {
       # Next, grab the list of rooms
       var (rooms, s) = receive(s);
       # Spawn the handler function
-      var roomHandler = spawnClient { roomSelectLoop(s, roomStr) };
+      var roomHandler = spawnClient { roomSelectLoop(s, roomStr, rooms) };
 
       # Next, populate the placeholder with the received rooms
       var generated_radio_dom = makeRoomForm(rooms, roomHandler);

@@ -181,26 +181,21 @@ fun handleNickname(room, s, loopPid) {
 }
 
 fun handleRoom(roomsSenderEnd, loopPid) server {
+  fun member(elem , l) {
+    switch(l) {
+      case [] -> false
+      case (x::xs) -> x == elem || member(elem, xs)
+    }
+  }
+
   # get all available rooms
   var rooms = spawnWait { loopPid ! GetRooms(self()) ; receive { case n -> n }};
   # send the rooms to the client.
   var s = send(rooms, roomsSenderEnd);
-
   # get the room selection from the client
-  offer(s) {
-      case NewRoom(s) ->
-        var (r,s) = receive(s);
-        loopPid ! NewRoom(r);
-        var moderatorChannelSendEnd = fork(
-          fun (moderatorChannelRecvEnd) {
-            moderatorHandler(r, moderatorChannelRecvEnd, loopPid)
-        });
-        var s = send(moderatorChannelSendEnd, s);
-        handleNickname(r, s, loopPid)
-      case ExistingRoom(s) ->
-        var (r,s) = receive(s);
-        handleNickname(r, s, loopPid)
-  }
+  var (r, s) = receive(s);
+  if (not(member(r, rooms))) loopPid ! NewRoom(r) else ();
+  handleNickname(r, s, loopPid)
 }
 
 fun clientAcceptor(ap, loopPid) server {

@@ -19,7 +19,8 @@ module DomFunctions {
 open DomFunctions
 
 module Components {
-  fun displayChatBox(topic, nicks, incomingMsgChan, outgoingMsgChan) {
+  fun displayChatBox(room, topic, nicks, incomingMsgChan, outgoingMsgChan) {
+    var Room(roomStr) = room;
     var Topic(topicStr) = topic;
 
     fun addToMsgBox(xml) {
@@ -107,6 +108,7 @@ module Components {
 
       <#>
         <div id="chatBox">
+          <div id="topic"><p><span class="lead"><b>Room: </b>{stringToXml(roomStr)}</span></p></div>
           <div id="topic"><p><span class="lead"><b>Topic: </b>{stringToXml(topicStr)}</span></p></div>
           <div id="msgs" style="overflow-y:scroll; width:100%; height:400px;"></div>
           <div>
@@ -132,14 +134,12 @@ module Components {
         var nick = getInputContents(nickname_box_id);
         clearInput(nickname_box_id);
         var s = send(Nickname(nick), s);
-        print("sent nickname");
-        var ((topic, nicks, incomingMsgChan), s) = receive(s);
-        print("received data");
-        displayChatBox(topic, nicks, incomingMsgChan, s)
+        var ((room, topic, nicks, incomingMsgChan), s) = receive(s);
+        displayChatBox(room, topic, nicks, incomingMsgChan, s)
     }
 
-    var nameHandler = spawnClient { receive { case _ -> handleSubmitName(channel) } };
-    print("Starting nameBox");
+    var nameHandler =
+      spawnClient { receive { case _ -> handleSubmitName(channel) } };
     replaceNode(<#>
                   <div id="nameBox">
                     <p>Nickname:</p>
@@ -165,14 +165,13 @@ module Components {
                 { makeRadioRec(xs) } </#>
             }
           }
-      var radios = makeRadioRec(rooms);
       <#>
       <form id="rooms" l:onsubmit="{ handlerFn ! Submit()}">
           <input id="startButton" type="radio" name="room" checked="checked"
-                 l:onchange="{ handlerFn ! Room("\\NewRoom")}"/>New
+                 l:onchange="{ handlerFn ! Room("/newRoom")}"/>New
           <input id="newRoomText" type="text" value=""/><br/>
-          <p>
             { makeRadioRec(rooms) }
+          <p>
             <input type="submit" name="submitButton" value="Enter"/>
           </p>
       </form>
@@ -187,18 +186,16 @@ module Components {
           # if the user wants to create a new room, extract the room name
           # from the text field
           if (roomStr == "\\NewRoom") {
-            var newRoom = getInputContents("newRoomText");
+            var roomStr = getInputContents("newRoomText");
             # validate newRoom name (if non-empty)
             # TODO: check against existing room names
-            if (newRoom == "") {
-              print("Please, specify the name of a new room.");
+            if (roomStr == "") {
               roomSelectLoop(s, roomStr)
             } else {
               nameBox(send(Room(roomStr), select NewRoom s))
             }
           } else {
             var s = send(Room(roomStr), select ExistingRoom s);
-            print("Send exisitng");
             nameBox(s)
           }
         }
@@ -221,7 +218,6 @@ module Components {
       replaceNode(generated_radio_dom, getNodeById("room_placeholder"));
     }
 
-    # {print("Inside mainpage html"); makeRadioRec(rooms, roomHandler)}
     # get all available rooms from teh server and pick one via radio buttons
     doSetup("\\NewRoom");
   }

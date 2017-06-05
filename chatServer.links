@@ -24,19 +24,13 @@ fun clientHandlerLoop(room, nick, clientToServerChan, loopPid) {
 fun clientHandler(room, nick, chatServerRecvEnd, serverToClientRecvEnd, loopPid) {
 
   # Get the current topic and nicks
-  print("In clientHandler");
   loopPid ! GetServerState(room, self());
-  print("received own state");
-  var (topic, nicks) = receive { case st -> st };
+  var (room, topic, nicks) = receive { case st -> st };
   var Topic(topicStr) = topic;
-  print("Topic "^^topicStr);
-  print(intToString(length(nicks)));
-  print("Got topics from main loop");
 
   # Send topic, nicks, and outgoing channel
   var chatServerRecvEnd =
-    send((topic, nicks, serverToClientRecvEnd), chatServerRecvEnd);
-  print("Sent all the stuff to the client");
+    send((room, topic, nicks, serverToClientRecvEnd), chatServerRecvEnd);
 
   clientHandlerLoop(room, nick, chatServerRecvEnd, loopPid)
 }
@@ -117,7 +111,6 @@ fun changeTopicByRoom(room, rooms, newTopic, topics) {
 # messages to update the state, or broadcast instructions to send things
 # along session channels.
 fun serverLoop(rooms, topics, nicks, pids) server {
-  print("Server loop started");
   receive {
     case BroadcastMessage(room, nick, msg) ->
       broadcastMessage(DeliverMessage(nick, msg),
@@ -135,13 +128,13 @@ fun serverLoop(rooms, topics, nicks, pids) server {
                  addNickByRoom(room, rooms, nick, nicks),
                  addPidByRoom(room, rooms, pid, pids))
     case GetServerState(room, pid) ->
-      pid ! (getTopicByRoom(room, rooms, topics),
+      pid ! (room,
+             getTopicByRoom(room, rooms, topics),
              getItemsByRoom(room, rooms, nicks));
       serverLoop(rooms, topics, nicks, pids)
     case NewRoom(room) ->
-      serverLoop(room::rooms, Topic("Topic")::topics, []::nicks, []::pids)
+      serverLoop(room::rooms, Topic("hello")::topics, []::nicks, []::pids)
     case GetRooms(pid) ->
-      print("getting rooms");
       pid ! (rooms);
       serverLoop(rooms, topics, nicks, pids)
   }
@@ -191,7 +184,7 @@ fun clientAcceptor(ap, loopPid) server {
 
 fun main() {
   var clientAP = new();
-  var loopPid = spawn { serverLoop([Room("room1"), Room("room2")], [Topic("hello"), Topic("By")], [[],[]], [[],[]]) };
+  var loopPid = spawn { serverLoop([], [], [], []) };
   var _ = spawn { clientAcceptor(clientAP, loopPid) };
   addRoute("/", fun (_, _) { ChatClient.mainPage(clientAP) } );
   addStaticRoute("/css", "css", [("css", "text/css")]);

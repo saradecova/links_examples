@@ -17,7 +17,7 @@ typename ReceiveCommand =
   [&| ChatMessage : ?(Message) . ReceiveCommand,
       ChangeTopic : ?(Topic). ReceiveCommand |&];
 
-typename ChatServer = ?(Nickname). !(Topic, [Nickname], ~ServerToClientChannel) . ReceiveCommand;
+typename ChatServer = ?(Nickname). !(Room, Topic, [Nickname], ~ServerToClientChannel) . ReceiveCommand;
 
 typename ReceiveRoomCommand =
   [&| NewRoom : ?(Room) . ChatServer,

@@ -185,7 +185,7 @@ module Components {
         case Submit() ->
           # if the user wants to create a new room, extract the room name
           # from the text field
-          if (roomStr == "\\NewRoom") {
+          if (roomStr == "/newRoom") {
             var roomStr = getInputContents("newRoomText");
             # validate newRoom name (if non-empty)
             # TODO: check against existing room names
@@ -219,7 +219,7 @@ module Components {
     }
 
     # get all available rooms from teh server and pick one via radio buttons
-    doSetup("\\NewRoom");
+    doSetup("/newRoom");
   }
 }
 

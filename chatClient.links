@@ -19,9 +19,14 @@ module DomFunctions {
 open DomFunctions
 
 module Components {
-  fun moderatorHandler(channel) {
+  fun moderatorLoop(channel) {
     receive {
-      case _ -> moderatorHandler(channel)
+      case NewUser(nickStr) ->
+        var to_add = <#><option value="">{stringToXml(nickStr)}</option></#>;
+        appendChildren(to_add, getNodeById("clientSelect"));
+        moderatorLoop(channel)
+      case UserLeft(nickStr) ->
+        moderatorLoop(channel)
     }
   }
 
@@ -59,25 +64,27 @@ module Components {
     }
 
 
-    fun incomingMsgLoop(s) {
+    fun incomingMsgLoop(s, moderatorPid) {
       offer(s) {
         case IncomingChatMessage(s) ->
           var ((Nickname(nick), Message(chatmsg)), s) = receive(s);
           debug("Received incoming chat message (" ^^ chatmsg ^^ ") from (" ^^ nick ^^ ")");
           addChatMsg(nick, chatmsg);
-          incomingMsgLoop(s)
+          incomingMsgLoop(s, moderatorPid)
         case NewUser(s) ->
           var (Nickname(nick), s) = receive(s);
+          moderatorPid ! NewUser(nick);
           addNewUser(nick);
-          incomingMsgLoop(s)
+          incomingMsgLoop(s, moderatorPid)
         case NewTopic(s) ->
           var (Topic(topic), s) = receive(s);
           changeTopic(topic);
-          incomingMsgLoop(s);
+          incomingMsgLoop(s, moderatorPid);
         case UserLeft(s) ->
           var (Nickname(nick), s) = receive(s);
+          moderatorPid ! UserLeft(nick);
           removeUser(nick); # Poor Nick
-          incomingMsgLoop(s)
+          incomingMsgLoop(s, moderatorPid)
       }
     }
 
@@ -112,7 +119,22 @@ module Components {
         clearInput(chat_box_id)
       }
 
+      fun makeAdminBox() {
+        <#>
+          <form id="adminForm" l:onsubmit="{()}">
+            <p>
+              <select id="clientSelect" required="required">
+                <option value="">None selected</option>
+              </select>
+              <input type="submit" id="adminSubmit" value="Remove"/>
+              <input type="submit" id="adminSubmit" value="Mute"/>
+            </p>
+          </form>
+        </#>
+      }
+
       <#>
+        { if (nicks == []) makeAdminBox() else <#/> }
         <div id="chatBox">
           <div id="topic"><p><span class="lead"><b>Room: </b>{stringToXml(roomStr)}</span></p></div>
           <div id="topic"><p><span class="lead"><b>Topic: </b>{stringToXml(topicStr)}</span></p></div>
@@ -128,9 +150,9 @@ module Components {
 
 
     # Firstly, spawn the incoming and outgoing message handlers
+    var moderatorHandler = spawnClient { moderatorLoop(moderatorChan) };
     var outgoingHandler = spawnClient { outgoingMsgLoop(outgoingMsgChan) };
-    var incomingHandler = spawnClient { incomingMsgLoop(incomingMsgChan) };
-    var moderatorHandler = spawnClient { moderatorHandler(moderatorChan) };
+    var incomingHandler = spawnClient { incomingMsgLoop(incomingMsgChan, moderatorHandler) };
 
     # Finally, remove the name request box, put the chatbox in, and we can get going
     replaceChildren(chatBox(outgoingHandler), getNodeById("main"))
@@ -152,7 +174,8 @@ module Components {
                   <div id="nameBox">
                     <p>Nickname:</p>
                     <form l:onsubmit="{nameHandler ! ()}">
-                      <input id="name_box" type="text"></input>
+                      <input id="name_box" type="text" autofocus="autofocus">
+                      </input>
                     </form>
                   </div>
                 </#>,

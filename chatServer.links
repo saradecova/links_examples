@@ -69,11 +69,9 @@ fun mockModeratorHandler(channel) {
   offer(channel) {
     case RemoveUser(channel) ->
       var (nick, channel) = receive(channel);
-      #loopPid ! RemoveUser(room, nick);
       mockModeratorHandler(channel)
     case MuteUser(channel) ->
       var (nick, channel) = receive(channel);
-      # loopPid ! MuteUser(room, nick);
       mockModeratorHandler(channel)
   }
 }

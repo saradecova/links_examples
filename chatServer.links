@@ -26,11 +26,20 @@ fun clientHandler(room, nick, chatServerRecvEnd, serverToClientRecvEnd, loopPid)
   # Get the current topic and nicks
   loopPid ! GetServerState(room, self());
   var (room, topic, nicks) = receive { case st -> st };
-  var Topic(topicStr) = topic;
+
+  # if this is the first user, make him moderator
+  var moderatorChannelSendEnd =
+    if (nicks == [])
+      fork( fun (moderatorChannelRecEnd) {
+        moderatorHandler(room, moderatorChannelRecEnd, loopPid) })
+    else
+      fork ( fun (mockModeratorChannelRecEnd) {
+        mockModeratorHandler(mockModeratorChannelRecEnd) });
 
   # Send topic, nicks, and outgoing channel
   var chatServerRecvEnd =
-    send((room, topic, nicks, serverToClientRecvEnd), chatServerRecvEnd);
+    send((room, topic, nicks, serverToClientRecvEnd, moderatorChannelSendEnd),
+    chatServerRecvEnd);
 
   clientHandlerLoop(room, nick, chatServerRecvEnd, loopPid)
 }
@@ -53,6 +62,19 @@ fun clientSendHandler(s) {
       var s = select UserLeft s;
       var s = send(nick, s);
       clientSendHandler(s)
+  }
+}
+
+fun mockModeratorHandler(channel) {
+  offer(channel) {
+    case RemoveUser(channel) ->
+      var (nick, channel) = receive(channel);
+      #loopPid ! RemoveUser(room, nick);
+      mockModeratorHandler(channel)
+    case MuteUser(channel) ->
+      var (nick, channel) = receive(channel);
+      # loopPid ! MuteUser(room, nick);
+      mockModeratorHandler(channel)
   }
 }
 

@@ -19,16 +19,38 @@ module DomFunctions {
 open DomFunctions
 
 module Components {
-  fun moderatorLoop(channel) {
+  fun moderatorHandler(channel) {
+    fun makeOption(name) {
+      var to_add = <#><option id="/id_placeholder">
+                   {stringToXml(name)}</option></#>;
+      appendChildren(to_add, getNodeById("clientSelect"));
+      var _ = domSetAttributeFromRef(getNodeById("/id_placeholder"),
+                                     "value", name);
+      var _ = domSetAttributeFromRef(getNodeById("/id_placeholder"),
+                                     "id", "/moderator"^^name);
+      ()
+    }
+
     receive {
-      case NewUser(nickStr) ->
-        var to_add = <#><option value="">{stringToXml(nickStr)}</option></#>;
-        appendChildren(to_add, getNodeById("clientSelect"));
-        moderatorLoop(channel)
-      case UserLeft(nickStr) ->
-        moderatorLoop(channel)
+      case NewUser(name) ->
+        makeOption(name);
+        moderatorHandler(channel)
+      case UserLeft(name) ->
+        removeNode(getNodeById("/moderator"^^name));
+        moderatorHandler(channel)
+      case Remove() ->
+        var selectedUser = getInputContents("clientSelect");
+        if (selectedUser == "")
+          moderatorHandler(channel)
+        else {
+          removeNode(getNodeById("/moderator"^^selectedUser));
+          moderatorHandler(channel)
+        }
+      case Mute() ->
+        moderatorHandler(channel)
     }
   }
+
 
   fun displayChatBox(room, topic, nicks, incomingMsgChan, moderatorChan, outgoingMsgChan) {
     var Room(roomStr) = room;
@@ -113,7 +135,7 @@ module Components {
       }
     }
 
-    fun chatBox(outgoingHandlerPid) {
+    fun chatBox(outgoingHandlerPid, modHandler) {
       fun handleSubmit() {
         outgoingHandlerPid ! getInputContents(chat_box_id);
         clearInput(chat_box_id)
@@ -126,8 +148,10 @@ module Components {
               <select id="clientSelect" required="required">
                 <option value="">None selected</option>
               </select>
-              <input type="submit" id="adminSubmit" value="Remove"/>
-              <input type="submit" id="adminSubmit" value="Mute"/>
+              <input type="submit" id="adminSubmit" value="Remove"
+              l:onclick="{modHandler ! Remove() }"/>
+              <input type="submit" id="adminSubmit" value="Mute"
+              l:onclick="{modHandler ! Mute() }"/>
             </p>
           </form>
         </#>
@@ -149,13 +173,18 @@ module Components {
     }
 
 
-    # Firstly, spawn the incoming and outgoing message handlers
-    var moderatorHandler = spawnClient { moderatorLoop(moderatorChan) };
+    # channel contacting client about messaging, topic changes
     var outgoingHandler = spawnClient { outgoingMsgLoop(outgoingMsgChan) };
-    var incomingHandler = spawnClient { incomingMsgLoop(incomingMsgChan, moderatorHandler) };
+
+    # loop that contacts server about user deletion/muting
+    # also keeps track of currently selection user
+    var modHandler = spawnClient { moderatorHandler(moderatorChan) };
+
+    # channel for the server to send new client/ client left updates
+    var incomingHandler = spawnClient { incomingMsgLoop(incomingMsgChan, modHandler) };
 
     # Finally, remove the name request box, put the chatbox in, and we can get going
-    replaceChildren(chatBox(outgoingHandler), getNodeById("main"))
+    replaceChildren(chatBox(outgoingHandler, modHandler), getNodeById("main"))
   }
 
   fun nameBox(channel) {

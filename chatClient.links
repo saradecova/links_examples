@@ -14,13 +14,13 @@ module DomFunctions {
     var _ = domSetPropertyFromRef(textNode, "value", "");
     ()
   }
-
 }
+
 open DomFunctions
 
-module Components {
+fun mainPage(ap) {
   # TODO: keep list of current users
-  fun moderatorHandler(channel) client {
+  fun moderatorHandler(channel) {
     fun makeOption(name) {
       var to_add = <#><option id="/id_placeholder">
                    {stringToXml(name)}</option></#>;
@@ -125,6 +125,9 @@ module Components {
           var (Nickname(nick), s) = receive(s);
           muteUser(nick);
           incomingMsgLoop(s, moderatorPid)
+        case Leave(s) ->
+          redirect("/");
+          ()
       }
     }
 
@@ -302,53 +305,48 @@ module Components {
     # get all available rooms from teh server and pick one via radio buttons
     doSetup("/newRoom");
   }
-}
 
+  fun start() {
+    print("In start");
+    # oh dear, Simon attempts front-end webdev
+    var _ = spawnClient { chooseRoom(ap) };
+    page
+      <html>
+        <head>
+          <title>Links chat</title>
+          <link href="http://fonts.googleapis.com/css?family=Merriweather:400,300italic,300" rel="stylesheet" type="text/css"></link>
+          <link href="http://fonts.googleapis.com/css?family=Kotta+One" rel="stylesheet" type="text/css"></link>
+          <link href="http://fonts.googleapis.com/css?family=Lora" rel="stylesheet" type="text/css"></link>
+          <link href="css/bootstrap.min.css" rel="stylesheet"></link>
+          <link href="css/abcd.css" rel="stylesheet"></link>
+        </head>
 
-
-open Components
-
-fun mainPage(ap) {
-fun start() {
-  # oh dear, Simon attempts front-end webdev
-  var _ = spawnClient { chooseRoom(ap) };
-  page
-    <html>
-      <head>
-        <title>Links chat</title>
-        <link href="http://fonts.googleapis.com/css?family=Merriweather:400,300italic,300" rel="stylesheet" type="text/css"></link>
-        <link href="http://fonts.googleapis.com/css?family=Kotta+One" rel="stylesheet" type="text/css"></link>
-        <link href="http://fonts.googleapis.com/css?family=Lora" rel="stylesheet" type="text/css"></link>
-        <link href="css/bootstrap.min.css" rel="stylesheet"></link>
-        <link href="css/abcd.css" rel="stylesheet"></link>
-      </head>
-
-      <div class="navbar-wrapper">
-        <div class="container">
-          <div id="navbar" class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+        <div class="navbar-wrapper">
+          <div class="container">
+            <div id="navbar" class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class ="jumbotron">
-        <div class="container">
-          <h1>Links Session-Typed Chat</h1>
-          <hr>...complete with totally original stylesheet</hr>
-        </div>
-      </div>
-
-
-      <div id="main" class="container marketing">
-        <div class="row featurette">
-          <div id="roomSelect">
-            <p> Choose one of the existing rooms or create a new one </p>
-                      <div id="room_placeholder"></div>
+        <div class ="jumbotron">
+          <div class="container">
+            <h1>Links Session-Typed Chat</h1>
+            <hr>...complete with totally original stylesheet</hr>
           </div>
         </div>
-      </div>
-    </html>
-}
 
-start()
+
+        <div id="main" class="container marketing">
+          <div class="row featurette">
+            <div id="roomSelect">
+              <p> Choose one of the existing rooms or create a new one </p>
+                        <div id="room_placeholder"></div>
+            </div>
+          </div>
+        </div>
+      </html>
+  }
+
+  start()
 
 }

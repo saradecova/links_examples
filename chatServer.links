@@ -72,6 +72,8 @@ fun clientSendHandler(s) {
       var s = select UserMuted s;
       var s = send(nick, s);
       clientSendHandler(s)
+    case DeliverLeave() ->
+      select Leave s
   }
 }
 
@@ -160,7 +162,8 @@ fun perRoomLoop(status) server {
         perRoomLoop(status)
       else {
         var users = filter(fun (x) { x.nick<>nick }, status.users);
-        var leaving = hd(pids).pid;
+        var leaving = hd(pids);
+        leaving.pid ! DeliverLeave();
         broadcastMessage(DeliverUserLeft(nick), users);
         perRoomLoop((status with users=users))
       }

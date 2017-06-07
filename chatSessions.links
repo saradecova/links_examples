@@ -21,6 +21,6 @@ typename ModeratorChannel =
   [&| RemoveUser : ?(Nickname) . ModeratorChannel,
       MuteUser : ?(Nickname) . ModeratorChannel |&];
 
-typename ChatServer = ?(Room) . ?(Nickname). !(Room, Topic, [Nickname], ~ServerToClientChannel, ModeratorChannel) . ReceiveCommand;
+typename ChatServer = ?(Room) . ?(Nickname). !(Room, Topic, Bool, ~ServerToClientChannel, ModeratorChannel) . ReceiveCommand;
 
 typename RoomsSend = !([Room]) . ChatServer;

@@ -19,7 +19,8 @@ module DomFunctions {
 open DomFunctions
 
 module Components {
-  fun moderatorHandler(channel) {
+  # TODO: keep list of current users
+  fun moderatorHandler(channel) client {
     fun makeOption(name) {
       var to_add = <#><option id="/id_placeholder">
                    {stringToXml(name)}</option></#>;
@@ -40,19 +41,28 @@ module Components {
         moderatorHandler(channel)
       case Remove() ->
         var selectedUser = getInputContents("clientSelect");
-        if (selectedUser == "")
+        if (selectedUser == "") {
+          print("No option has been selected");
           moderatorHandler(channel)
-        else {
-          removeNode(getNodeById("/moderator"^^selectedUser));
+        } else {
+          var channel = send(Nickname(selectedUser), select RemoveUser channel);
           moderatorHandler(channel)
         }
       case Mute() ->
-        moderatorHandler(channel)
+        var selectedUser = getInputContents("clientSelect");
+        if (selectedUser == "") {
+          print("No option has been selected");
+          moderatorHandler(channel)
+        } else {
+          removeNode(getNodeById("/moderator"^^selectedUser));
+          # var channel = send(Nickname(selectedUser), select MuteUser channel);
+          moderatorHandler(channel)
+        }
     }
   }
 
 
-  fun displayChatBox(room, topic, nicks, incomingMsgChan, moderatorChan, outgoingMsgChan) {
+  fun displayChatBox(room, topic, is_mod, incomingMsgChan, moderatorChan, outgoingMsgChan) {
     var Room(roomStr) = room;
     var Topic(topicStr) = topic;
 
@@ -158,7 +168,7 @@ module Components {
       }
 
       <#>
-        { if (nicks == []) makeAdminBox() else <#/> }
+        { if (is_mod) makeAdminBox() else <#/> }
         <div id="chatBox">
           <div id="topic"><p><span class="lead"><b>Room: </b>{stringToXml(roomStr)}</span></p></div>
           <div id="topic"><p><span class="lead"><b>Topic: </b>{stringToXml(topicStr)}</span></p></div>
@@ -192,9 +202,9 @@ module Components {
         var nick = getInputContents(nickname_box_id);
         clearInput(nickname_box_id);
         var s = send(Nickname(nick), s);
-        var ((room, topic, nicks, incomingMsgChan, moderatorChan), s) =
+        var ((room, topic, is_mod, incomingMsgChan, moderatorChan), s) =
           receive(s);
-        displayChatBox(room, topic, nicks, incomingMsgChan, moderatorChan, s)
+        displayChatBox(room, topic, is_mod, incomingMsgChan, moderatorChan, s)
     }
 
     var nameHandler =

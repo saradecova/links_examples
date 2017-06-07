@@ -12,7 +12,8 @@ typename ServerToClientChannel =
       NewUser : !(Nickname) . ServerToClientChannel,
       NewTopic : !(Topic) . ServerToClientChannel,
       UserLeft : !(Nickname) . ServerToClientChannel,
-      UserMuted : !(Nickname) . ServerToClientChannel
+      UserMuted : !(Nickname) . ServerToClientChannel,
+      Leave : End
   |+];
 
 typename ReceiveCommand =

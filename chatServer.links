@@ -1,6 +1,14 @@
 open ChatSessions
 open ChatClient
 
+#helper functions:
+fun member(elem , l) {
+  switch(l) {
+    case [] -> false
+    case (x::xs) -> x == elem || member(elem, xs)
+  }
+}
+
 ## clientHandler loop: Reads incoming requests from the client, dispatches
 ## each command to the serverLoop which will broadcast to other session clients.
 # Alas, we can't make this an inner function at the moment since we need a type
@@ -147,10 +155,15 @@ fun perRoomLoop(status) server {
       pid ! (status.name, status.topic, status.users);
       perRoomLoop(status)
     case RemoveUser(nick) ->
-      var users = removeUserByName(nick, status.users);
-      # TODO
-      broadcastMessage(DeliverUserLeft(nick), status.users);
-      perRoomLoop(status)
+      var pids = filter(fun (x) { x.nick==nick }, status.users);
+      if (pids == []) # already removeNode
+        perRoomLoop(status)
+      else {
+        var users = filter(fun (x) { x.nick<>nick }, status.users);
+        var leaving = hd(pids).pid;
+        broadcastMessage(DeliverUserLeft(nick), users);
+        perRoomLoop((status with users=users))
+      }
     case MuteUser(nick) ->
       broadcastMessage(DeliverUserMuted(nick), status.users);
       var users = muteUserByName(nick, status.users);
@@ -176,13 +189,6 @@ fun handleNickname(s, loopPid) {
 }
 
 fun handleRoom(roomsSenderEnd, loopPid) server {
-  fun member(elem , l) {
-    switch(l) {
-      case [] -> false
-      case (x::xs) -> x == elem || member(elem, xs)
-    }
-  }
-
   # get all available rooms
   var rooms = spawnWait { loopPid ! GetRooms(self()) ; receive { case n -> n }};
   # send the rooms to the client.

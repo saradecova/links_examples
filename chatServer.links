@@ -21,10 +21,10 @@ fun clientHandlerLoop(nick, clientToServerChan, loopPid) {
 # Process that is spawned to handle messages from the chat client.
 fun clientHandler(nick, chatServerRecvEnd, serverToClientRecvEnd, loopPid) {
   # Get the current topic and nicks
-  var (room, topic, nicks) =
+  var (room, topic, users) =
     spawnWait { loopPid ! GetRoomState(self()) ; receive { case n -> n }};
 
-  var is_mod = nicks == [];
+  var is_mod = users == [];
   # if this is the first user, make him moderator
   var moderatorChannelSendEnd =
     if (is_mod) # not right
@@ -88,34 +88,46 @@ fun moderatorHandler(channel, loopPid) {
 }
 
 # Broadcasts a given message to the mailboxes of a list of PIDs
-fun broadcastMessage(msg, pids) {
-  switch(pids) {
+fun broadcastMessage(msg, users) {
+  switch(users) {
     case [] -> ()
-    case pid :: pids -> pid ! msg; broadcastMessage(msg, pids)
+    case user :: users -> user.pid ! msg; broadcastMessage(msg, users)
   }
 }
 
-fun perRoomLoop(name, topic, admins, nicks, pids) server {
+# status : ( name:Room, topic:Topic, users:[User] )
+# user : ( nick:Nickname, pid:ClientSendHandler, isAdmin:Bool )
+fun perRoomLoop(status) server {
+  fun removeUserByName(nick, users) {
+    switch(users) {
+      case [] -> []
+      case x::xs -> if (x.nick == nick) tl(users)
+                    else hd(users)::removeUserByName(nick, xs)
+    }
+  }
+
   receive {
     case BroadcastMessage(nick, msg) ->
-      broadcastMessage(DeliverMessage(nick, msg), pids);
-      perRoomLoop(name, topic, admins, nicks, pids)
+      broadcastMessage(DeliverMessage(nick, msg), status.users);
+      perRoomLoop(status)
     case BroadcastChangeTopic(newTopic) ->
-      broadcastMessage(DeliverNewTopic(newTopic), pids);
-      perRoomLoop(name, newTopic, admins, nicks, pids)
+      broadcastMessage(DeliverNewTopic(newTopic), status.users);
+      perRoomLoop((status with topic=newTopic))
     case NewClient(nick, pid) ->
-      broadcastMessage(DeliverNewUser(nick), pids);
-      perRoomLoop(name, topic, admins, nick::nicks, pid::pids)
+      broadcastMessage(DeliverNewUser(nick), status.users);
+      var new_users = (nick=nick, pid=pid, isAdmin=false)::(status.users);
+      perRoomLoop((status with users=new_users))
     case GetRoomState(pid) ->
-      pid ! (name, topic, nicks);
-      perRoomLoop(name, topic, admins, nicks, pids)
+      pid ! (status.name, status.topic, status.users);
+      perRoomLoop(status)
     case RemoveUser(nick) ->
+      var users = removeUserByName(nick, status.users);
       # TODO
-      broadcastMessage(DeliverUserLeft(nick), pids);
-      perRoomLoop(name, topic, admins, nicks, pids)
+      broadcastMessage(DeliverUserLeft(nick), status.users);
+      perRoomLoop(status)
     case MuteUser(room, nick) ->
       # TODO
-      perRoomLoop(name, topic, admins, nicks, pids)
+      perRoomLoop(status)
   }
 }
 
@@ -164,9 +176,13 @@ fun clientAcceptor(ap, loopPid) server {
 
 fun roomsLoop(rooms, handlers) server {
   fun getRoomHandler(room, rooms, handlers) {
+    fun getNewRoomHandler() {
+      var room_status = (name=room, topic=Topic("hello"), users=[]);
+      spawn { perRoomLoop(room_status) }
+    }
     switch(rooms) {
       # if no handler found, its a new room so create a new handler
-      case [] -> (spawn { perRoomLoop(room, Topic("Hello"), [], [], []) }, true)
+      case [] -> (getNewRoomHandler(), true)
       case x::xs -> if (x == room) (hd(handlers), false)
                     else getRoomHandler(room, xs, tl(handlers))
     }

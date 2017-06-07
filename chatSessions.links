@@ -18,7 +18,8 @@ typename ServerToClientChannel =
 
 typename ReceiveCommand =
   [&| ChatMessage : ?(Message) . ReceiveCommand,
-      ChangeTopic : ?(Topic). ReceiveCommand |&];
+      ChangeTopic : ?(Topic). ReceiveCommand,
+      Leaving : End |&];
 
 typename ModeratorChannel =
   [&| RemoveUser : ?(Nickname) . ModeratorChannel,

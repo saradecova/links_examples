@@ -19,7 +19,10 @@ module DomFunctions {
 open DomFunctions
 
 fun mainPage(ap) {
-  # TODO: keep list of current users
+  # loop that receives input from
+  # 1. the client (moderator) about removing and muting clients
+  # 2. the server about users entering/leaving rooms so they can be removed
+  #    from the dropdown selection box
   fun moderatorHandler(channel) {
     fun makeOption(name) {
       var to_add = <#><option id="/id_placeholder">
@@ -202,9 +205,10 @@ fun mainPage(ap) {
     var modHandler = spawnClient { moderatorHandler(moderatorChan) };
 
     # channel for the server to send new client/ client left updates
-    var incomingHandler = spawnClient { incomingMsgLoop(incomingMsgChan, modHandler) };
+    var incomingHandler =
+      spawnClient { incomingMsgLoop(incomingMsgChan, modHandler) };
 
-    # Finally, remove the name request box, put the chatbox in, and we can get going
+    # Finally, remove the name request box, put the chatbox in, and start off
     replaceChildren(chatBox(outgoingHandler, modHandler), getNodeById("main"))
   }
 
@@ -270,9 +274,9 @@ fun mainPage(ap) {
       receive {
         case Room(roomStr) ->
           roomSelectLoop(s, roomStr, rooms)
+        # if the user wants to create a new room, extract the room name from
+        # the text field
         case Submit() ->
-          # if the user wants to create a new room, extract the room name
-          # from the text field
           if (roomStr == "/newRoom") {
             var roomStr = getInputContents("newRoomText");
             if (roomStr == "" || member(Room(roomStr), rooms))

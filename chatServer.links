@@ -10,9 +10,10 @@ fun member(elem , l) {
 }
 
 ## clientHandler loop: Reads incoming requests from the client, dispatches
-## each command to the serverLoop which will broadcast to other session clients.
+## each command to the perRoomLoop which will broadcast to other room members.
 # Alas, we can't make this an inner function at the moment since we need a type
 # annotation, and type annotations are broken for inner functions at the moment
+# ^^ not applicable anymore?
 fun clientHandlerLoop(nick, clientToServerChan, loopPid) {
   offer(clientToServerChan) {
     case ChatMessage(clientToServerChan) ->
@@ -23,6 +24,8 @@ fun clientHandlerLoop(nick, clientToServerChan, loopPid) {
       var (newTopic, clientToServerChan) = receive(clientToServerChan);
       loopPid ! BroadcastChangeTopic(newTopic);
       clientHandlerLoop(nick, clientToServerChan, loopPid)
+    case Leaving(clientToServerChan) ->
+      ()
   }
 }
 
@@ -50,6 +53,7 @@ fun clientHandler(nick, chatServerRecvEnd, serverToClientRecvEnd, loopPid) {
    clientHandlerLoop(nick, chatServerRecvEnd, loopPid)
 }
 
+# Messages directed form the server to the client
 fun clientSendHandler(s) {
   receive {
     case DeliverMessage(nick, msg) ->
@@ -77,6 +81,7 @@ fun clientSendHandler(s) {
   }
 }
 
+# A moderator process for clients that are not moderators
 fun mockModeratorHandler(channel) {
   offer(channel) {
     case RemoveUser(channel) ->
@@ -88,6 +93,7 @@ fun mockModeratorHandler(channel) {
   }
 }
 
+# A loop providing the client with moderator capabilities
 fun moderatorHandler(channel, loopPid) {
   offer(channel) {
     case RemoveUser(channel) ->
@@ -112,6 +118,7 @@ fun broadcastMessage(msg, users) {
 # status : ( name:Room, topic:Topic, users:[User] )
 # user : ( nick:Nickname, pid:ClientSendHandler, isAdmin:Bool,
 #          isMuted:Bool )
+# Main server loop that handles an individual room
 fun perRoomLoop(status) server {
   fun removeUserByName(nick, users) {
     switch(users) {
@@ -191,6 +198,11 @@ fun handleNickname(s, loopPid) {
   loopPid ! NewClient(name, clientSendHandlerPid)
 }
 
+# Send all existing rooms to the client
+# The client then either picks one of the existing rooms or cretes a new one,
+# and sends its choice back to the client.
+# The server then allocates a handle for that particular room, for client
+# to operate on
 fun handleRoom(roomsSenderEnd, loopPid) server {
   # get all available rooms
   var rooms = spawnWait { loopPid ! GetRooms(self()) ; receive { case n -> n }};
@@ -210,6 +222,7 @@ fun clientAcceptor(ap, loopPid) server {
   clientAcceptor(ap, loopPid)
 }
 
+# keeps track of all rooms (by name) and their corresponding handlers
 fun roomsLoop(rooms, handlers) server {
   fun getRoomHandler(room, rooms, handlers) {
     fun getNewRoomHandler() {

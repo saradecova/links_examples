@@ -54,8 +54,7 @@ module Components {
           print("No option has been selected");
           moderatorHandler(channel)
         } else {
-          removeNode(getNodeById("/moderator"^^selectedUser));
-          # var channel = send(Nickname(selectedUser), select MuteUser channel);
+          var channel = send(Nickname(selectedUser), select MuteUser channel);
           moderatorHandler(channel)
         }
     }
@@ -95,6 +94,11 @@ module Components {
       addToMsgBox(to_add)
     }
 
+    fun muteUser(nick) {
+      var to_add = <#><p><b>{stringToXml(nick)}</b> got muted :(</p></#>;
+      addToMsgBox(to_add)
+    }
+
 
     fun incomingMsgLoop(s, moderatorPid) {
       offer(s) {
@@ -116,6 +120,10 @@ module Components {
           var (Nickname(nick), s) = receive(s);
           moderatorPid ! UserLeft(nick);
           removeUser(nick); # Poor Nick
+          incomingMsgLoop(s, moderatorPid)
+        case UserMuted(s) ->
+          var (Nickname(nick), s) = receive(s);
+          muteUser(nick);
           incomingMsgLoop(s, moderatorPid)
       }
     }

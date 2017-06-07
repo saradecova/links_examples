@@ -4,13 +4,15 @@ typename Nickname = [| Nickname : String |];
 typename Message = [| Message : String |];
 typename Topic = [| Topic : String |];
 typename Room = [| Room : String |];
+# typename RoomsSend;
 
 # Client sends messages along this
 typename ServerToClientChannel =
   [+| IncomingChatMessage : !(Nickname, Message) . ServerToClientChannel,
       NewUser : !(Nickname) . ServerToClientChannel,
       NewTopic : !(Topic) . ServerToClientChannel,
-      UserLeft : !(Nickname) .ServerToClientChannel
+      UserLeft : !(Nickname) . ServerToClientChannel,
+      UserMuted : !(Nickname) . ServerToClientChannel
   |+];
 
 typename ReceiveCommand =
@@ -21,6 +23,8 @@ typename ModeratorChannel =
   [&| RemoveUser : ?(Nickname) . ModeratorChannel,
       MuteUser : ?(Nickname) . ModeratorChannel |&];
 
-typename ChatServer = ?(Room) . ?(Nickname). !(Room, Topic, Bool, ~ServerToClientChannel, ModeratorChannel) . ReceiveCommand;
+typename ChatServer = ?(Room) . ?(Nickname) .
+                      !(Room, Topic, Bool, ~ServerToClientChannel, ModeratorChannel)
+                      . ReceiveCommand;
 
 typename RoomsSend = !([Room]) . ChatServer;

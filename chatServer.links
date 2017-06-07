@@ -60,6 +60,10 @@ fun clientSendHandler(s) {
       var s = select UserLeft s;
       var s = send(nick, s);
       clientSendHandler(s)
+    case DeliverUserMuted(nick) ->
+      var s = select UserMuted s;
+      var s = send(nick, s);
+      clientSendHandler(s)
   }
 }
 
@@ -96,7 +100,8 @@ fun broadcastMessage(msg, users) {
 }
 
 # status : ( name:Room, topic:Topic, users:[User] )
-# user : ( nick:Nickname, pid:ClientSendHandler, isAdmin:Bool )
+# user : ( nick:Nickname, pid:ClientSendHandler, isAdmin:Bool,
+#          isMuted:Bool )
 fun perRoomLoop(status) server {
   fun removeUserByName(nick, users) {
     switch(users) {
@@ -106,16 +111,37 @@ fun perRoomLoop(status) server {
     }
   }
 
+  fun muteUserByName(nick, users) {
+    switch(users) {
+      case [] -> []
+      case x::xs ->
+        if (x.nick == nick) (x with isMuted=true)::tl(users)
+        else hd(users)::removeUserByName(nick, xs)
+    }
+  }
+
+  fun isMuted(nick, users) {
+    switch(users) {
+      case [] -> true
+      case x::xs -> if (x.nick == nick) x.isMuted
+                    else isMuted(nick, xs)
+    }
+  }
+
   receive {
     case BroadcastMessage(nick, msg) ->
-      broadcastMessage(DeliverMessage(nick, msg), status.users);
+      var users = if (isMuted(nick, status.users)) []
+                  else status.users;
+      broadcastMessage(DeliverMessage(nick, msg), users);
       perRoomLoop(status)
     case BroadcastChangeTopic(newTopic) ->
       broadcastMessage(DeliverNewTopic(newTopic), status.users);
       perRoomLoop((status with topic=newTopic))
     case NewClient(nick, pid) ->
       broadcastMessage(DeliverNewUser(nick), status.users);
-      var new_users = (nick=nick, pid=pid, isAdmin=false)::(status.users);
+      var new_user =
+        (nick=nick, pid=pid, isAdmin=false, isMuted=false);
+      var new_users = new_user::(status.users);
       perRoomLoop((status with users=new_users))
     case GetRoomState(pid) ->
       pid ! (status.name, status.topic, status.users);
@@ -125,9 +151,10 @@ fun perRoomLoop(status) server {
       # TODO
       broadcastMessage(DeliverUserLeft(nick), status.users);
       perRoomLoop(status)
-    case MuteUser(room, nick) ->
-      # TODO
-      perRoomLoop(status)
+    case MuteUser(nick) ->
+      broadcastMessage(DeliverUserMuted(nick), status.users);
+      var users = muteUserByName(nick, status.users);
+      perRoomLoop((status with users=users))
   }
 }
 

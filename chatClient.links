@@ -309,6 +309,7 @@ module Components {
 open Components
 
 fun mainPage(ap) {
+fun start() {
   # oh dear, Simon attempts front-end webdev
   var _ = spawnClient { chooseRoom(ap) };
   page
@@ -346,4 +347,8 @@ fun mainPage(ap) {
         </div>
       </div>
     </html>
+}
+
+start()
+
 }

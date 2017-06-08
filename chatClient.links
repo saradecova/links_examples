@@ -102,6 +102,11 @@ fun mainPage(ap) {
       addToMsgBox(to_add)
     }
 
+    fun unmuteUser(nick) {
+      var to_add = <#><p><b>{stringToXml(nick)}</b> got unmuted :D </p></#>;
+      addToMsgBox(to_add)
+    }
+
 
     fun incomingMsgLoop(s, moderatorPid) {
       offer(s) {
@@ -127,6 +132,10 @@ fun mainPage(ap) {
         case UserMuted(s) ->
           var (Nickname(nick), s) = receive(s);
           muteUser(nick);
+          incomingMsgLoop(s, moderatorPid)
+        case UserUnmuted(s) ->
+          var (Nickname(nick), s) = receive(s);
+          unmuteUser(nick);
           incomingMsgLoop(s, moderatorPid)
         case Leave(s) ->
           redirect("/");
@@ -174,7 +183,7 @@ fun mainPage(ap) {
               </select>
               <input type="submit" id="adminSubmit" value="Remove"
               l:onclick="{modHandler ! Remove() }"/>
-              <input type="submit" id="adminSubmit" value="Mute"
+              <input type="submit" id="adminSubmit" value="Mute/Unmute"
               l:onclick="{modHandler ! Mute() }"/>
             </p>
           </form>

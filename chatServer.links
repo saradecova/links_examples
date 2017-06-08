@@ -76,6 +76,10 @@ fun clientSendHandler(s) {
       var s = select UserMuted s;
       var s = send(nick, s);
       clientSendHandler(s)
+    case DeliverUserUnmuted(nick) ->
+      var s = select UserUnmuted s;
+      var s = send(nick, s);
+      clientSendHandler(s)
     case DeliverLeave() ->
       select Leave s
   }
@@ -132,8 +136,9 @@ fun perRoomLoop(status) server {
     switch(users) {
       case [] -> []
       case x::xs ->
-        if (x.nick == nick) (x with isMuted=true)::tl(users)
-        else hd(users)::removeUserByName(nick, xs)
+        if (x.nick == nick)
+          (x with isMuted=not(x.isMuted))::tl(users)
+        else hd(users)::muteUserByName(nick, xs)
     }
   }
 
@@ -175,7 +180,11 @@ fun perRoomLoop(status) server {
         perRoomLoop((status with users=users))
       }
     case MuteUser(nick) ->
-      broadcastMessage(DeliverUserMuted(nick), status.users);
+      var is_muted = filter( fun(x){ x.isMuted }, status.users) == [];
+      if (is_muted)
+        broadcastMessage(DeliverUserMuted(nick), status.users)
+      else
+        broadcastMessage(DeliverUserUnmuted(nick), status.users);
       var users = muteUserByName(nick, status.users);
       perRoomLoop((status with users=users))
   }

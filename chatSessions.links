@@ -13,6 +13,7 @@ typename ServerToClientChannel =
       NewTopic : !(Topic) . ServerToClientChannel,
       UserLeft : !(Nickname) . ServerToClientChannel,
       UserMuted : !(Nickname) . ServerToClientChannel,
+      UserUnmuted : !(Nickname) . ServerToClientChannel,
       Leave : End
   |+];
 

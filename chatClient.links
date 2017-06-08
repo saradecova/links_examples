@@ -60,6 +60,16 @@ fun mainPage(ap) {
           var channel = send(Nickname(selectedUser), select MuteUser channel);
           moderatorHandler(channel)
         }
+      case MakeModerator() ->
+        var selectedUser = getInputContents("clientSelect");
+        if (selectedUser == "") {
+          print("No option has been selected");
+          moderatorHandler(channel)
+        } else {
+          var channel = send(Nickname(selectedUser),
+                        select MakeModerator channel);
+          moderatorHandler(channel)
+        }
     }
   }
 
@@ -180,11 +190,13 @@ fun mainPage(ap) {
             <p>
               <select id="clientSelect" required="required">
                 <option value="">None selected</option>
-              </select>
-              <input type="submit" id="adminSubmit" value="Remove"
+              </select><br/>
+              <input type="submit" id="adminRemove" value="Remove"
               l:onclick="{modHandler ! Remove() }"/>
-              <input type="submit" id="adminSubmit" value="Mute/Unmute"
+              <input type="submit" id="adminMute" value="Mute/Unmute"
               l:onclick="{modHandler ! Mute() }"/>
+              <input type="submit" id="adminMakeAdmin" value="Make moderator"
+              l:onclick="{modHandler ! MakeModerator() }"/>
             </p>
           </form>
         </#>

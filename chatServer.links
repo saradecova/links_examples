@@ -94,6 +94,9 @@ fun mockModeratorHandler(channel) {
     case MuteUser(channel) ->
       var (nick, channel) = receive(channel);
       mockModeratorHandler(channel)
+    case MakeModerator(channel) ->
+      var (nick, channel) = receive(channel);
+      mockModeratorHandler(channel)
   }
 }
 
@@ -107,6 +110,9 @@ fun moderatorHandler(channel, loopPid) {
     case MuteUser(channel) ->
       var (nick, channel) = receive(channel);
       loopPid ! MuteUser(nick);
+      moderatorHandler(channel, loopPid)
+    case MakeModerator(channel) ->
+      var (nick, channel) = receive(channel);
       moderatorHandler(channel, loopPid)
   }
 }

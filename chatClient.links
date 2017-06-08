@@ -35,6 +35,13 @@ fun mainPage(ap) {
       ()
     }
 
+    fun makeOptions(names) {
+      switch(names) {
+        case [] -> ()
+        case x::xs -> makeOption(x); makeOptions(xs)
+      }
+    }
+
     receive {
       case NewUser(name) ->
         makeOption(name);
@@ -70,10 +77,11 @@ fun mainPage(ap) {
                         select MakeModerator channel);
           moderatorHandler(channel)
         }
-      case MakeMeModerator() ->
+      case MakeMeModerator(names) ->
         print("Became a moderator");
         replaceChildren(makeAdminBox(self()),
                         getNodeById("adminBox_placehodler"));
+        makeOptions(names);
         moderatorHandler(channel)
     }
   }
@@ -153,7 +161,9 @@ fun mainPage(ap) {
           unmuteUser(nick);
           incomingMsgLoop(s, moderatorPid)
         case MakeModerator(s) ->
-          moderatorPid ! MakeMeModerator();
+          var (nicks, s) = receive(s);
+          var names = for (Nickname(nameStr)<-nicks) { [nameStr] };
+          moderatorPid ! MakeMeModerator(names);
           incomingMsgLoop(s, moderatorPid)
         case Leave(s) ->
           redirect("/");

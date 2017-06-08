@@ -77,8 +77,10 @@ fun clientSendHandler(s) {
       clientSendHandler(s)
     case DeliverLeave() ->
       select Leave s
-    case DeliverBecameModerator() ->
-      select MakeModerator s
+    case DeliverBecameModerator(nicks) ->
+      var s = select MakeModerator s;
+      var s = send(nicks, s);
+      clientSendHandler(s)
   }
 }
 
@@ -191,7 +193,8 @@ fun perRoomLoop(status) server {
       if (nonModeratorNicks == [])
         perRoomLoop(status)
       else {
-        broadcastMessage(DeliverBecameModerator(), nonModeratorNicks);
+        var userNames = for (x<-status.users) { [x.nick] };
+        broadcastMessage(DeliverBecameModerator(userNames), nonModeratorNicks);
         var users = makeModeratorByName(nick, status.users);
         perRoomLoop((status with users=users))
       }

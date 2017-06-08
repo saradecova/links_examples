@@ -14,6 +14,7 @@ typename ServerToClientChannel =
       UserLeft : !(Nickname) . ServerToClientChannel,
       UserMuted : !(Nickname) . ServerToClientChannel,
       UserUnmuted : !(Nickname) . ServerToClientChannel,
+      MakeModerator : ServerToClientChannel,
       Leave : End
   |+];
 

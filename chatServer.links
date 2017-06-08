@@ -37,13 +37,8 @@ fun clientHandler(nick, chatServerRecvEnd, serverToClientRecvEnd, loopPid) {
 
   var is_mod = users == [];
   # if this is the first user, make him moderator
-  var moderatorChannelSendEnd =
-    if (is_mod) # not right
-      fork( fun (moderatorChannelRecEnd) {
-        moderatorHandler(moderatorChannelRecEnd, loopPid) })
-    else
-      fork ( fun (mockModeratorChannelRecEnd) {
-        mockModeratorHandler(mockModeratorChannelRecEnd) });
+  var moderatorChannelSendEnd = fork( fun (moderatorChannelRecEnd) {
+    moderatorHandler(moderatorChannelRecEnd, loopPid) });
 
   # Send topic, nicks, and outgoing channel
   var chatServerRecvEnd =
@@ -82,21 +77,6 @@ fun clientSendHandler(s) {
       clientSendHandler(s)
     case DeliverLeave() ->
       select Leave s
-  }
-}
-
-# A moderator process for clients that are not moderators
-fun mockModeratorHandler(channel) {
-  offer(channel) {
-    case RemoveUser(channel) ->
-      var (nick, channel) = receive(channel);
-      mockModeratorHandler(channel)
-    case MuteUser(channel) ->
-      var (nick, channel) = receive(channel);
-      mockModeratorHandler(channel)
-    case MakeModerator(channel) ->
-      var (nick, channel) = receive(channel);
-      mockModeratorHandler(channel)
   }
 }
 

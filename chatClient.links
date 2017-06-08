@@ -71,7 +71,9 @@ fun mainPage(ap) {
           moderatorHandler(channel)
         }
       case MakeMeModerator() ->
-        replaceChildren(makeAdminBox(self()), getNodeById("adminBox_placehodler"));
+        print("Became a moderator");
+        replaceChildren(makeAdminBox(self()),
+                        getNodeById("adminBox_placehodler"));
         moderatorHandler(channel)
     }
   }
@@ -236,7 +238,7 @@ fun mainPage(ap) {
           <input type="submit" id="adminMute" value="Mute/Unmute"
           l:onclick="{modHandler ! Mute() }"/>
           <input type="submit" id="adminMakeAdmin" value="Make moderator"
-          l:onclick="{modHandler ! MakeMeModerator() }"/>
+          l:onclick="{modHandler ! MakeModerator() }"/>
         </p>
       </form>
     </#>

@@ -77,6 +77,8 @@ fun clientSendHandler(s) {
       clientSendHandler(s)
     case DeliverLeave() ->
       select Leave s
+    case DeliverBecameModerator() ->
+      select MakeModerator s
   }
 }
 
@@ -93,6 +95,7 @@ fun moderatorHandler(channel, loopPid) {
       moderatorHandler(channel, loopPid)
     case MakeModerator(channel) ->
       var (nick, channel) = receive(channel);
+      loopPid ! MakeModerator(nick);
       moderatorHandler(channel, loopPid)
   }
 }
@@ -128,6 +131,15 @@ fun perRoomLoop(status) server {
     }
   }
 
+  fun makeModeratorByName(nick, users) {
+    switch(users) {
+      case [] -> []
+      case x::xs ->
+        if (x.nick == nick) (x with isAdmin=true)::tl(users)
+        else hd(users)::makeModeratorByName(nick, xs)
+    }
+  }
+
   fun isMuted(nick, users) {
     switch(users) {
       case [] -> true
@@ -155,24 +167,34 @@ fun perRoomLoop(status) server {
       pid ! (status.name, status.topic, status.users);
       perRoomLoop(status)
     case RemoveUser(nick) ->
-      var pids = filter(fun (x) { x.nick==nick }, status.users);
-      if (pids == []) # already removeNode
+      var matchingUsers = filter(fun (x) { x.nick==nick }, status.users);
+      if (matchingUsers == [])
         perRoomLoop(status)
       else {
         var users = filter(fun (x) { x.nick<>nick }, status.users);
-        var leaving = hd(pids);
-        leaving.pid ! DeliverLeave();
+        broadcastMessage(DeliverLeave(), matchingUsers);
         broadcastMessage(DeliverUserLeft(nick), users);
         perRoomLoop((status with users=users))
       }
     case MuteUser(nick) ->
-      var is_muted = filter( fun(x){ x.isMuted }, status.users) == [];
+      var is_muted = filter( fun(x){ x.nick==nick && x.isMuted },
+                                     status.users) == [];
       if (is_muted)
         broadcastMessage(DeliverUserMuted(nick), status.users)
       else
         broadcastMessage(DeliverUserUnmuted(nick), status.users);
       var users = muteUserByName(nick, status.users);
       perRoomLoop((status with users=users))
+    case MakeModerator(nick) ->
+      var nonModeratorNicks =
+        filter( fun(x) { x.nick==nick && x.isAdmin==false }, status.users );
+      if (nonModeratorNicks == [])
+        perRoomLoop(status)
+      else {
+        broadcastMessage(DeliverBecameModerator(), nonModeratorNicks);
+        var users = makeModeratorByName(nick, status.users);
+        perRoomLoop((status with users=users))
+      }
   }
 }
 

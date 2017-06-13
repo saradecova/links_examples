@@ -38,7 +38,8 @@ fun playing(ap, game_state) {
 
 sig get_initial_game_state: ((~InitiateGame), String) ~> GameState
 fun get_initial_game_state(s, name) {
-    <| Start s.s[name].s(state).{state} |>
+    #<| Start s.s[name].s(state).{state} |>
+    receive(send(name, select Start s)).1
 }
 
 fun initialize(player_name) client {
@@ -54,23 +55,7 @@ fun initialize(player_name) client {
     var _ = spawn { playing(game_access_point, game_state_i)};
 
     fun on_key_down(e) {
-        if (getCharCode(e) == 81) {  #that's Q
-            var _ = spawn {
-                var (c: (~Client)) = request(client_access_point);
-                fun other_play(player_id, game_state: GameState, in_game: Bool) {
-                    if (in_game) {
-                        var (cp: (~Game)) = request(game_access_point);
-                        <| Move cp.cp[player_id].
-                                   cp[ Cursor(ftoi(itof(screenWidth) *. random()),
-                                              ftoi(itof(screenHeight) *. random())): Input].
-                                   cp(in_game).cp(new_game_state).{ (other_play(player_id, new_game_state, in_game)) } |>
-                    } else
-                        other_play(player_id, game_state, in_game)
-                }
-                <| NewPlayer c.c["bot"].c(player_id).c(game_state).{ ignore(spawn{(other_play(player_id, game_state, true))}) } |>
-            };
-            ()
-        } else if (getCharCode(e) == 32) { #that's space
+        if (getCharCode(e) == 32) { #that's space
             ignore(spawn {
                 var (c: (~Client)) = request(client_access_point);
                 var (x,y) = (fromJust(get_int("cursor_x")), fromJust(get_int("cursor_y")));  # not safe

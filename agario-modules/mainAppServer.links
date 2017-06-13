@@ -3,20 +3,46 @@ open Render
 open Logic
 open MainAppClient
 
-fun players_manager(players) {
+# keeps truck of all players, their states and channel on which the server
+# communicates with them
+fun players_manager(players, pids) {
   receive {
-    case Update(player_id, player:PlayerState) ->
-      players_manager(update_players(player_id, player, players))
+    case Update(player_id, player, pid) ->
+      players_manager(update_players(player_id, player, players), pids)
+    case Add(player_id, player:PlayerState, pid) ->
+      var players = lsDictAdd(player_id, player, players);
+      var pids = lsDictAdd(player_id, pid, pids);
+      players_manager(players, pids)
+    case GetAllPids(pid) ->
+      pid ! (players, pids);
+      players_manager(players, pids)
   }
 }
 
-fun server_sender_ping(sendChannel, prev_time) {
+fun clientHandler(channel:ServerToClientPing) {
+  receive {
+    case DeliverNewState(players) -> clientHandler(send(players, channel))
+  }
+}
+
+# repeatedly sends up-to-date players' state to all users
+fun server_sender_ping(manager, prev_time) {
+  fun broadcastState(players, pids) {
+    switch(pids) {
+      case [] -> ()
+      case pid::pids -> pid ! DeliverNewState(players);
+                        broadcastState(tl(players), pids)
+    }
+  }
+
   var curr_time = getTime(event);
   if (curr_time - prev_time > 30) {
-    # broadcast state to all users
-    server_sender_ping(sendChannel, curr_time)
+    var (players, pids) =
+      spawnWait { manager ! GetAllPids(self()); receive { case n -> n }};
+    broadcastState(players, pids);
+    server_sender_ping(manager, curr_time)
   } else {
-    server_sender_ping(sendChannel, prev_time)
+    server_sender_ping(manager, prev_time)
   }
 }
 
@@ -31,7 +57,7 @@ fun server_rec_ping(recChannel:UpdatePlayerChannel) {
 fun main() {
   var clientAP = new();
 
-  var gameManager = spawn { players_manager([]) };
+  var gameManager = spawn { players_manager([], []) };
   # var _ = spawn { clientAcceptor(clientAP, loopPid) };
   addRoute("/", fun (_, _) { MainAppClient.mainPage(clientAP) } );
   addStaticRoute("/css", "css", [("css", "text/css")]);

@@ -50,7 +50,7 @@ typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
 typename GameState = (screen: ScreenState, players: [(Int, PlayerState)], food: FoodState);
 
-typename ServerToClientPing = !GameState.ServerToClientPing;
+typename ServerToClientPing = ![(Int, PlayerState)].ServerToClientPing;
 typename UpdatePlayerChannel = ?Int. ?PlayerState . UpdatePlayerChannel;
 typename InitiateGame = [&| Start: ?String.!GameState.End |&];
 
@@ -269,7 +269,7 @@ fun update_food(player_id, state: GameState) {
         state
 }
 
-fun update_players(player_id, player: PlayerState, players) {
+fun update_players(player_id, player:PlayerState, players) {
     fun blob_eat_blob(reverse, curr_blob)(other_blob) {
         if (itof(curr_blob.mass) *. 1.0 > itof(other_blob.mass))
             if (euclidean_dist((curr_blob.x, curr_blob.y), (other_blob.x, other_blob.y)) < player_radius(curr_blob.mass))

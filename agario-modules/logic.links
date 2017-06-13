@@ -50,9 +50,6 @@ typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
 typename GameState = (screen: ScreenState, players: [(Int, PlayerState)], food: FoodState);
 
-typename Game = [&| Move: ?Int.?Input.!Bool.!GameState.Game,
-                    AddPlayer: ?Int.?String.!GameState.Game |&];
-typename Client = ?Int.?Input.Client;
 typename InitiateGame = [&| Start: ?String.!GameState.End |&];
 
 fun random_colour_player(s: Float, v: Float) {

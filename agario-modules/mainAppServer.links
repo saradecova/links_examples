@@ -12,28 +12,27 @@ fun on_mousemove(e) {
 }
 
 ####
-fun playing(ap, game_state) {
-    var (s: (Game)) = accept(ap);
-    <| offer s {
-        case Move -> {
-            var (player_id, s) = receive(s);
-            var (input, s) = receive(s);
+fun playing(playHandler: Game, game_state) {
+    offer(playHandler) {
+        case Move(playHandler) -> {
+            var (player_id, playHandler) = receive(playHandler);
+            var (input, playHandler) = receive(playHandler);
             var game_state_new = update_logic(game_state, player_id, input);
-            var in_game = if (isJust(lsDictLookup(player_id, game_state.players))) true else false;
-            ignore(send(game_state_new, (send(true, s))));
-            playing(ap, game_state_new)
+            var in_game = isJust(lsDictLookup(player_id, game_state.players));
+            var playHandler = send(game_state_new, (send(true, playHandler)));
+            playing(playHandler, game_state_new)
         }
-        case AddPlayer -> {
-            var (player_id, s) = receive(s);
-            var (player_name, s) = receive(s);
+        case AddPlayer(playHandler) -> {
+            var (player_id, playHandler) = receive(playHandler);
+            var (player_name, playHandler) = receive(playHandler);
             var new_player_state = (name=player_name, colour=random_colour_player(0.95, 0.7),
                                     blobs=[(x=1000.0, y=1000.0, mass=base_player_mass, split_pos=(-.1.0,-.1.0))]): PlayerState;
             var game_state_new = (screen=game_state.screen, food=game_state.food,
                                   players=lsDictAdd(player_id, new_player_state, game_state.players));
-            ignore(send(game_state_new, s));
-            playing(ap, game_state_new)
+            var playHandler = send(game_state_new, playHandler);
+            playing(playHandler, game_state_new)
         }
-    } |>
+    }
 }
 
 sig get_initial_game_state: ((~InitiateGame), String) ~> GameState
@@ -42,56 +41,65 @@ fun get_initial_game_state(s, name) {
 }
 
 fun initialize(player_name) client {
-    var game_access_point = new();
-    var client_access_point = new();
-    replaceNode(<div id="container" tabindex="1">
-                    <canvas id="{canvas1}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
-                    <canvas id="{canvas2}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
-                </div>,
-                getNodeById("container"));
+  # client screen actions (move/addClient)
+  var game_access_point = new();
+  # client position
+  var client_access_point = new();
 
-    var game_state_i = get_initial_game_state(fork(initial_game_state), player_name);
-    var _ = spawn { playing(game_access_point, game_state_i)};
+  replaceNode(<div id="container" tabindex="1">
+                  <canvas id="{canvas1}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
+                  <canvas id="{canvas2}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
+              </div>,
+              getNodeById("container"));
 
-    jsSetOnEvent(getNodeById("container"), "mousemove", on_mousemove, true);
+  # default with one client
+  var game_state_i = get_initial_game_state(fork(initial_game_state), player_name);
+  # start of the client handler
+  var _ = spawn { playing(accept(game_access_point), game_state_i)};
 
-    var _ = spawn {
-        fun play(game_state: GameState, player_count: Int) {
-            var (c: (~Game)) = request(game_access_point);
-            var (s: Client) = accept(client_access_point);
-            <| s(player_id).s(input).
-                    Move c.c[player_id].c[input].c(in_game).c(new_game_state).{ if(in_game) draw(player_id, new_game_state) else ();
-                                                                               (play(new_game_state, player_count))}
-            |>
-        }
+  jsSetOnEvent(getNodeById("container"), "mousemove", on_mousemove, true);
 
-        play(game_state_i, 1)
-    };
-
-    fun master_loop() {
-        var start_time = getTime(event);
-        fun game_loop(prev_time: Int) {
-            var curr_time = getTime(event);
-            if (curr_time - prev_time > 30) {
-                var cursor =
-                    switch ((get_int("cursor_x"), get_int("cursor_y"))) {
-                        case (Just(x), Just(y)) -> Cursor(x, y)
-                        case (Nothing, Nothing) -> Cursor(gameWidth/2, gameHeight/2)
-                        case (Just(x), Nothing) -> Cursor(x, gameHeight/2)
-                        case (Nothing, Just(y)) -> Cursor(gameWidth/2, y)
-                    };
-                var (c: (~Client)) = request(client_access_point);
-                var _ = send(cursor, send(1, c));
-                game_loop(curr_time)
-            } else {
-                game_loop(prev_time)
-            }
-        }
-        game_loop(start_time)
+  var _ = spawn {
+    fun play(c: (~Game), s: Client, game_state: GameState, player_count: Int) {
+        var (player_id, s) = receive(s);
+        var (input, s) = receive(s);
+        var c = send(input, send(player_id, select Move c));
+        var (in_game, c) = receive(c);
+        var (new_game_state, c) = receive(c);
+        if(in_game) draw(player_id, new_game_state) else ();
+        play(c, s, new_game_state, player_count)
     }
+    var (c: (~Game)) = request(game_access_point);
+    var (s: Client) = accept(client_access_point);
+    play(c, s, game_state_i, 1)
+  };
 
-    var _ = spawn { master_loop() };
-    ()
+  fun master_loop() {
+    var start_time = getTime(event);
+    
+    fun game_loop(c: (~Client), prev_time: Int) {
+      var curr_time = getTime(event);
+      if (curr_time - prev_time > 30) {
+        var cursor =
+          switch ((get_int("cursor_x"), get_int("cursor_y"))) {
+            case (Just(x), Just(y)) -> Cursor(x, y)
+            case (Nothing, Nothing) -> Cursor(gameWidth/2, gameHeight/2)
+            case (Just(x), Nothing) -> Cursor(x, gameHeight/2)
+            case (Nothing, Just(y)) -> Cursor(gameWidth/2, y)
+          };
+
+        var c = send(cursor, send(1, c));
+        game_loop(c, curr_time)
+      } else {
+        game_loop(c, prev_time)
+      }
+    }
+    var (c: (~Client)) = request(client_access_point);
+    game_loop(c, start_time)
+  }
+
+  var _ = spawn { master_loop() };
+  ()
 }
 
 fun mainPage(_, _) {

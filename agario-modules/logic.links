@@ -50,6 +50,8 @@ typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
 typename GameState = (screen: ScreenState, players: [(Int, PlayerState)], food: FoodState);
 
+typename ServerToClientPing = !GameState.ServerToClientPing;
+typename UpdatePlayerChannel = ?Int. ?PlayerState . UpdatePlayerChannel;
 typename InitiateGame = [&| Start: ?String.!GameState.End |&];
 
 fun random_colour_player(s: Float, v: Float) {
@@ -239,7 +241,7 @@ fun update_food(player_id, state: GameState) {
                 var blob = hd(blobs);
                 var blob_pos = (blob.x, blob.y);
                 var zipped_food_p = lsFilter( fun(x) { euclidean_dist(x.1, blob_pos) > player_radius(blob.mass) }, zipped_food);
-                var blob_p = (x=blob.x, y=blob.y, split_pos=blob.split_pos, mass=blob.mass - lsLength(zipped_food_p) + lsLength(zipped_food)): Blob;
+                var blob_p = (blob with mass=blob.mass - lsLength(zipped_food_p) + lsLength(zipped_food)): Blob;
                 var (next_blobs, next_food) = update_blob_food(tl(blobs), zipped_food_p);
                 (blob_p :: next_blobs, next_food)
             }
@@ -286,10 +288,9 @@ fun update_players(player_id, player: PlayerState, players) {
                     var other_player = lsHead(players).2;
                     var eaten_blobs_mass = sum(map(fun(x) {x.mass}, filter(blob_eat_blob(false, blob), other_player.blobs)));
                     var other_player_blobs_p = filter(blob_eat_blob(true, blob), other_player.blobs);
-                    var blob_p = (x=blob.x, y=blob.y, split_pos=blob.split_pos, mass=blob.mass+eaten_blobs_mass);
+                    var blob_p = (blob with mass=blob.mass+eaten_blobs_mass);
                     var (next_blob, next_players) = update_curr_blob(blob_p, lsTail(players));
-                    var other_player_p = (name=other_player.name, colour=other_player.colour,
-                                          blobs=other_player_blobs_p): PlayerState;
+                    var other_player_p = (other_player with blobs=other_player_blobs_p):PlayerState;
                     (next_blob, lsCons((lsHead(players).1, other_player_p), next_players))
                 } else
                     update_curr_blob(blob, lsTail(players))
@@ -310,7 +311,7 @@ fun update_players(player_id, player: PlayerState, players) {
 
     var (blobs_p, players_p) = update_curr_player(player.blobs, players);
     var players_p = lsFilter(fun(x) {length((x.2).blobs) > 0}, players_p);
-    lsDictAdd(player_id, (name=player.name, colour=player.colour, blobs=blobs_p): PlayerState, players_p)
+    lsDictAdd(player_id, (player with blobs=blobs_p): PlayerState, players_p)
 }
 
 fun update_logic(state: GameState, player_id: Int, in_event: Input) {
@@ -323,13 +324,12 @@ fun update_logic(state: GameState, player_id: Int, in_event: Input) {
                 var blobs = player_state.blobs;
                 var player_state_p = compute_player_position(player_state, (x,y));
                 var players = update_players(player_id, player_state_p, state_new.players);
-
-                (screen=state_new.screen, players=players, food=state_new.food): GameState
+                (state_new with players=players):GameState
             }
             case Key(x,y) -> {
                 var player_state_p = split_player(player_state, (x, y));
                 var players = update_players(player_id, player_state_p, state_new.players);
-                (screen=state_new.screen, players=players, food=state_new.food): GameState
+                (state_new with players=players): GameState
             }
         }
     }    else

@@ -38,7 +38,6 @@ fun playing(ap, game_state) {
 
 sig get_initial_game_state: ((~InitiateGame), String) ~> GameState
 fun get_initial_game_state(s, name) {
-    #<| Start s.s[name].s(state).{state} |>
     receive(send(name, select Start s)).1
 }
 
@@ -54,29 +53,16 @@ fun initialize(player_name) client {
     var game_state_i = get_initial_game_state(fork(initial_game_state), player_name);
     var _ = spawn { playing(game_access_point, game_state_i)};
 
-    fun on_key_down(e) {
-        if (getCharCode(e) == 32) { #that's space
-            ignore(spawn {
-                var (c: (~Client)) = request(client_access_point);
-                var (x,y) = (fromJust(get_int("cursor_x")), fromJust(get_int("cursor_y")));  # not safe
-                <| InputMsg c.c[1].c[Key(x,y)].{()} |> })
-        } else ()
-    }
-
     jsSetOnEvent(getNodeById("container"), "mousemove", on_mousemove, true);
-    jsSetOnKeyDown(getNodeById("container"), on_key_down);
 
     var _ = spawn {
         fun play(game_state: GameState, player_count: Int) {
             var (c: (~Game)) = request(game_access_point);
             var (s: Client) = accept(client_access_point);
-            <| offer s {
-                case InputMsg -> s(player_id).s(input).
+            <| s(player_id).s(input).
                     Move c.c[player_id].c[input].c(in_game).c(new_game_state).{ if(in_game) draw(player_id, new_game_state) else ();
                                                                                (play(new_game_state, player_count))}
-                case NewPlayer -> s(name).s[player_count+1].s[game_state].
-                    AddPlayer c.c[player_count+1].c[name].c(new_game_state).{ (play(new_game_state, player_count+1)) }
-            } |>
+            |>
         }
 
         play(game_state_i, 1)
@@ -95,7 +81,8 @@ fun initialize(player_name) client {
                         case (Nothing, Just(y)) -> Cursor(gameWidth/2, y)
                     };
                 var (c: (~Client)) = request(client_access_point);
-                <| InputMsg c.c[1].c[cursor].{game_loop(curr_time)} |>
+                var _ = send(cursor, send(1, c));
+                game_loop(curr_time)
             } else {
                 game_loop(prev_time)
             }

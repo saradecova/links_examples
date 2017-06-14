@@ -1,0 +1,8 @@
+fun dictUpdate(key, value, dict) {
+  switch(dict) {
+    case [] -> []
+    case (k,v)::xs ->
+      if (k == key) (key, value)::xs
+      else (k,v)::dictUpdate(key, value, dict)
+  }
+}

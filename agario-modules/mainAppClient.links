@@ -20,7 +20,7 @@ fun cursor_loop(gameHandler, prev_time:Int) client {
       switch(get_int("cursor_y")) { case Just(y) -> y
                                     case Nothing -> gameHeight/2 }
     );
-    gameHandler ! cursor;
+    gameHandler ! Navigate(cursor);
     cursor_loop(gameHandler, curr_time)
   } else {
     cursor_loop(gameHandler, prev_time)
@@ -31,10 +31,13 @@ fun cursor_loop(gameHandler, prev_time:Int) client {
 # it to the drawing routine
 fun main_game_loop(player_id, drawHandler, game_state) client {
   receive {
-    case cursor_input:Input ->
+    case Navigate(cursor_input:Input) ->
        var game_state_new = update_logic(game_state, player_id, cursor_input);
        var in_game = isJust(lsDictLookup(player_id, game_state.players));
        drawHandler ! Draw(in_game, game_state_new);
+       main_game_loop(player_id, drawHandler, game_state_new)
+    case UpdatePlayers(new_players) ->
+       var game_state_new = (game_state with players=new_players);
        main_game_loop(player_id, drawHandler, game_state_new)
   }
 }
@@ -46,6 +49,12 @@ fun draw_game_loop(player_id) client {
       if(in_game) draw(player_id, new_game_state) else ();
       draw_game_loop(player_id)
   }
+}
+
+fun handle_server_ping(pingChannel:(~ServerToClientPing), gameHandler) {
+  var (players, pingChannel) = receive(pingChannel);
+  gameHandler ! UpdatePlayers(players);
+  handle_server_ping(pingChannel, gameHandler)
 }
 
 fun initialize(player_name:String, ap) client {
@@ -70,12 +79,12 @@ fun initialize(player_name:String, ap) client {
 
     var (serverPingChannel:(~ServerToClientPing), s) = receive(s);
 
-    var _ = spawn { mockFoo(serverPingChannel) };
-
     var drawHandler = spawnClient { draw_game_loop(player_id) };
     # start of the client handler
     var gameHandler =
        spawnClient { main_game_loop(player_id, drawHandler, init_game)};
+
+    var _ = spawn { handle_server_ping(serverPingChannel, gameHandler) };
 
     jsSetOnEvent(getNodeById("container"), "mousemove", on_mousemove, true);
 

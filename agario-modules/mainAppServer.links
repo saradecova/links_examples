@@ -11,9 +11,9 @@ fun players_manager(players, pids, new_id) {
     case Update(player_id, player, pid) ->
       players_manager(dictUpdate(player_id, player, players), pids, new_id)
     case Add(player_id, player:PlayerState, ping_channel) ->
-      var players = dictUpdate(player_id, player, players);
-      var pids = dictUpdate(player_id, ping_channel, pids);
-      players_manager(players, pids, new_id)
+      debug("leaving add");
+      players_manager((player_id, player)::players,
+                      (player_id, ping_channel)::pids, new_id)
     case GeneratePlayerId(pid) ->
       print("In generate");
       pid ! new_id;
@@ -59,12 +59,13 @@ fun server_rec_ping(recChannel:UpdatePlayerChannel) {
 }
 
 fun setup(s:InitiateGame, manager) {
-  debug("starting setup");
   fun clientHandler(serverToClientRecvEnd, initGameChannel) {
     var _ = send(serverToClientRecvEnd, initGameChannel);
     debug("sent channel");
     ()
   }
+
+  debug("starting setup");
   # send new player id.
   var player_id = spawnWait { manager ! GeneratePlayerId(self());
                               receive { case n -> n }};

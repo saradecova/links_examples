@@ -55,12 +55,12 @@ fun initialize(player_name:String, ap) client {
   }
 
   fun client_setup(s) {
+    debug("starting client setup");
     replaceNode(<div id="container" tabindex="1">
                     <canvas id="{canvas1}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
                     <canvas id="{canvas2}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
                 </div>,
                 getNodeById("container"));
-
     var (player_id, s) = receive(s);
     debug("received player id: "^^intToString(player_id));
 
@@ -83,8 +83,9 @@ fun initialize(player_name:String, ap) client {
     var _ = spawnClient { cursor_loop(gameHandler, getTime(event)) };
     ()
   }
-
+  debug("start client init");
   var s = request(ap);
+  debug("ap requested");
   var _ = spawnClient { client_setup(s) };
   ()
 }

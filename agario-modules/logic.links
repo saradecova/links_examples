@@ -50,9 +50,9 @@ typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
 typename GameState = (screen: ScreenState, players: [(Int, PlayerState)], food: FoodState);
 
-typename ServerToClientPing = ![(Int, PlayerState)].ServerToClientPing;
+typename ServerToClientPing = ![(Int, PlayerState)] . ServerToClientPing;
 typename UpdatePlayerChannel = ?Int. ?PlayerState . UpdatePlayerChannel;
-typename InitiateGame = [&| Start: ?String.!GameState.End |&];
+typename InitiateGame = !Int . ?PlayerState . !(~ServerToClientPing) . End;
 
 fun random_colour_player(s: Float, v: Float) {
     var grc = 0.618033988749895;
@@ -112,8 +112,8 @@ var base_food_count = 450;
 var food_radius = 10.0;
 var base_player_mass = 20;
 
-sig initial_game_state: (InitiateGame) ~> ()
-fun initial_game_state(s) {
+sig initial_game_state: (String, Int) ~> GameState
+fun initial_game_state(player_name, player_id) {
     fun initialize_food(gameWidth, gameHeight, food_count) {
         var range = lsRange(0, food_count);
         var positions = lsZip(lsMap(fun(x) {itof(gameWidth) *. random()}, range),
@@ -121,19 +121,13 @@ fun initial_game_state(s) {
         var colour = lsMap(fun(x) {random_colour(-.1.0, 0.8, 0.9)}, range);
         (pos=positions, colour=colour): FoodState
     }
-
-    offer(s) {
-        case Start(s) ->
-            var (player_name, s) = receive(s);
-            var screen_state = (x=0.0, y=0.0, scale=0.0): ScreenState;
-            var player_state = (name=player_name, colour=random_colour_player(0.95, 0.7),
-                                blobs=[(x=1000.0, y=1000.0, mass=base_player_mass, split_pos=(-.1.0,-.1.0))]): PlayerState;
-            var players = lsDictAdd(1, player_state, lsNilF());
-            var food_state = initialize_food(gameWidth, gameHeight, base_food_count);
-            var state = (screen=screen_state, players=players, food=food_state): GameState;
-            ignore(send(state, s))
-    }
-
+    var screen_state = (x=0.0, y=0.0, scale=0.0): ScreenState;
+    var player_state = (name=player_name, colour=random_colour_player(0.95, 0.7),
+                        blobs=[(x=1000.0, y=1000.0, mass=base_player_mass,
+                        split_pos=(-.1.0,-.1.0))]):PlayerState;
+    var players = lsDictAdd(player_id, player_state, lsNilF());
+    var food_state = initialize_food(gameWidth, gameHeight, base_food_count);
+    (screen=screen_state, players=players, food=food_state):GameState
 }
 
 fun get_scale(player) {

@@ -2,26 +2,31 @@ open Util.Lists
 open Render
 open Logic
 open MainAppClient
+open ServerLogic
 
 # keeps truck of all players, their states and channel on which the server
 # communicates with them
-fun players_manager(players, pids) {
+fun players_manager(players, pids, new_id) {
   receive {
     case Update(player_id, player, pid) ->
-      players_manager(update_players(player_id, player, players), pids)
-    case Add(player_id, player:PlayerState, pid) ->
-      var players = lsDictAdd(player_id, player, players);
-      var pids = lsDictAdd(player_id, pid, pids);
-      players_manager(players, pids)
+      players_manager(dictUpdate(player_id, player, players), pids, new_id)
+    case Add(player_id, player:PlayerState, ping_channel) ->
+      var players = dictUpdate(player_id, player, players);
+      var pids = dictUpdate(player_id, ping_channel, pids);
+      players_manager(players, pids, new_id)
+    case GeneratePlayerId(pid) ->
+      print("In generate");
+      pid ! new_id;
+      players_manager(players, pids, new_id+1)
     case GetAllPids(pid) ->
       pid ! (players, pids);
-      players_manager(players, pids)
+      players_manager(players, pids, new_id)
   }
 }
 
-fun clientHandler(channel:ServerToClientPing) {
+fun clientSendHandler(channel:ServerToClientPing) {
   receive {
-    case DeliverNewState(players) -> clientHandler(send(players, channel))
+    case DeliverNewState(players) -> clientSendHandler(send(players, channel))
   }
 }
 
@@ -53,12 +58,51 @@ fun server_rec_ping(recChannel:UpdatePlayerChannel) {
  server_rec_ping(recChannel)
 }
 
+fun setup(s:InitiateGame, manager) {
+  debug("starting setup");
+  fun clientHandler(serverToClientRecvEnd, initGameChannel) {
+    var _ = send(serverToClientRecvEnd, initGameChannel);
+    debug("sent channel");
+    ()
+  }
+  # send new player id.
+  var player_id = spawnWait { manager ! GeneratePlayerId(self());
+                              receive { case n -> n }};
+  debug("got player id: "^^intToString(player_id));
+  var s = send(player_id, s);
+
+  #  Get client's initial state. (is same for every client so should be
+  #  generated at the server. TODO: rewrite initial_game_state funtion so it
+  #  does not use pure client-side functions and can bu run on server).
+  var (player_state:PlayerState, s) = receive(s);
+  debug("received player's state");
+
+  # Generate a channel for sending regualar messages from server to client.
+  var serverToClientSendEnd:ServerToClientPing = linFork(
+    linfun (serverToClientRecvEnd:(~ServerToClientPing)) {
+      clientHandler(serverToClientRecvEnd, s)
+    });
+
+  # Fork off client send handler
+  var clientSendHandlerPid =
+    spawn { clientSendHandler(serverToClientSendEnd) };
+
+  # add new player to the manager
+  manager ! Add(player_id, player_state, clientSendHandlerPid);
+  ()
+}
+
+fun client_acceptor(ap, manager) {
+  var s = accept(ap);
+  var _ = spawn { setup(s, manager) };
+  client_acceptor(ap, manager)
+}
 
 fun main() {
   var clientAP = new();
 
-  var gameManager = spawn { players_manager([], []) };
-  # var _ = spawn { clientAcceptor(clientAP, loopPid) };
+  var gameManager = spawn { players_manager([], [], 1) };
+  var _ = spawn { client_acceptor(clientAP, gameManager) };
   addRoute("/", fun (_, _) { MainAppClient.mainPage(clientAP) } );
   addStaticRoute("/css", "css", [("css", "text/css")]);
   serveWebsockets();

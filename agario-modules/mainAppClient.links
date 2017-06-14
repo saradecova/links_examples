@@ -48,29 +48,44 @@ fun draw_game_loop(player_id) client {
   }
 }
 
-sig get_initial_game_state: ((~InitiateGame), String) ~> GameState
-fun get_initial_game_state(s, name) {
-    receive(send(name, select Start s)).1
-}
+fun initialize(player_name:String, ap) client {
+  fun mockFoo(channel:(~ServerToClientPing)) {
+    var (x, channel) = receive(channel);
+    mockFoo(channel)
+  }
 
-fun initialize(player_name, acc_point) client {
-  replaceNode(<div id="container" tabindex="1">
-                  <canvas id="{canvas1}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
-                  <canvas id="{canvas2}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
-              </div>,
-              getNodeById("container"));
+  fun client_setup(s) {
+    replaceNode(<div id="container" tabindex="1">
+                    <canvas id="{canvas1}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
+                    <canvas id="{canvas2}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
+                </div>,
+                getNodeById("container"));
 
-  # default with one client
-  var game_state_i = get_initial_game_state(fork(initial_game_state), player_name);
-  # drawing loop:
-  var drawHandler = spawnClient { draw_game_loop(1) };
-  # start of the client handler
-  var gameHandler = spawnClient { main_game_loop(1, drawHandler, game_state_i)};
+    var (player_id, s) = receive(s);
+    debug("received player id: "^^intToString(player_id));
 
-  jsSetOnEvent(getNodeById("container"), "mousemove", on_mousemove, true);
+    var init_game:GameState = initial_game_state(player_name, player_id);
+    var player_state:PlayerState = lsHead(init_game.players).2;
+    var s = send(player_state, s);
 
-  #  cursor tracking loop
-  var _ = spawnClient { cursor_loop(gameHandler, getTime(event)) };
+    var (serverPingChannel:(~ServerToClientPing), s) = receive(s);
+
+    var _ = spawn { mockFoo(serverPingChannel) };
+
+    var drawHandler = spawnClient { draw_game_loop(player_id) };
+    # start of the client handler
+    var gameHandler =
+       spawnClient { main_game_loop(player_id, drawHandler, init_game)};
+
+    jsSetOnEvent(getNodeById("container"), "mousemove", on_mousemove, true);
+
+    #  cursor tracking loop
+    var _ = spawnClient { cursor_loop(gameHandler, getTime(event)) };
+    ()
+  }
+
+  var s = request(ap);
+  var _ = spawnClient { client_setup(s) };
   ()
 }
 
@@ -111,7 +126,7 @@ fun mainPage(acc_point) {
                 <div id="container">
                     <div id="name_form">
                         Agar.io
-                        <form l:onsubmit="{initialize(player_name, acc_point)}">
+                        <form l:onsubmit="{initialize(player_name, acc_point) }">
                             <input type="text" l:name="player_name" autofocus="autofocus"/>
                         </form>
                     </div>

@@ -39,10 +39,6 @@ fun main_game_loop(player_id, drawHandler, game_state) client {
     case UpdatePlayers(new_players) ->
        var game_state_new = (game_state with players=new_players);
        main_game_loop(player_id, drawHandler, game_state_new)
-    case GetState(pid) ->
-      var player_state_maybe = lsDictLookup(player_id, game_state.players);
-      # pid ! (player_id, player_state_maybe);
-      main_game_loop(player_id, drawHandler, game_state)
   }
 }
 
@@ -55,33 +51,18 @@ fun draw_game_loop(player_id) client {
   }
 }
 
-fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
-                        gameHandler, prev_time) {
-  var curr_time = getTime(event);
-  if (curr_time - prev_time > 50) {
-    # Get player id and state from the main loop and send them over to server.
-    # The server then replies with up to date info for all players
-    # Update main game loop with new player states.
-    var (player_id, player_state_maybe:Maybe(PlayerState)) =
-    spawnWait { gameHandler ! GetState(self()); receive { case x -> x }};
-    if (isJust(player_state_maybe)) {
-      var player_state = fromJust(player_state_maybe);
-      var update_channel = send((player_id, player_state), update_channel);
-      var (players:([(Int, PlayerState)]), update_channel) =
-        receive(update_channel);
-      gameHandler ! UpdatePlayers(players);
-      server_handler_loop(update_channel:(~UpdatePlayerChannel), gameHandler, curr_time)
-    } else {
-      # If a player wasn't found, ignore.
-      server_handler_loop(update_channel, gameHandler, prev_time)
-    }
-  } else {
-    sleep(25);
-    server_handler_loop(update_channel, gameHandler, prev_time)
-  }
+fun handle_server_ping(pingChannel:(~ServerToClientPing), gameHandler) {
+  var (players, pingChannel) = receive(pingChannel);
+  gameHandler ! UpdatePlayers(players);
+  handle_server_ping(pingChannel, gameHandler)
 }
 
 fun initialize(player_name:String, ap) client {
+  fun mockFoo(channel:(~ServerToClientPing)) {
+    var (x, channel) = receive(channel);
+    mockFoo(channel)
+  }
+
   fun client_setup(s) {
     debug("starting client setup");
     replaceNode(<div id="container" tabindex="1">
@@ -94,23 +75,21 @@ fun initialize(player_name:String, ap) client {
 
     var init_game:GameState = initial_game_state(player_name, player_id);
     var player_state:PlayerState = lsHead(init_game.players).2;
-    var update_channel = send(player_state, s);
+    var s = send(player_state, s);
+
+    var (serverPingChannel:(~ServerToClientPing), s) = receive(s);
 
     var drawHandler = spawnClient { draw_game_loop(player_id) };
-
     # start of the client handler
     var gameHandler =
        spawnClient { main_game_loop(player_id, drawHandler, init_game)};
 
-    var serverHandler = spawnClient { server_handler_loop(update_channel,
-                                      gameHandler, getTime(event)) };
-
+    var _ = spawn { handle_server_ping(serverPingChannel, gameHandler) };
 
     jsSetOnEvent(getNodeById("container"), "mousemove", on_mousemove, true);
 
     #  cursor tracking loop
     var _ = spawnClient { cursor_loop(gameHandler, getTime(event)) };
-
     ()
   }
   debug("start client init");

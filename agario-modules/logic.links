@@ -50,8 +50,9 @@ typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
 typename GameState = (screen: ScreenState, players: [(Int, PlayerState)], food: FoodState);
 
-typename UpdatePlayerChannel = ?(Int,PlayerState) . ![(Int, PlayerState)] . UpdatePlayerChannel;
-typename InitiateGame = !Int . ?PlayerState . UpdatePlayerChannel;
+typename ServerToClientPing = ![(Int, PlayerState)] . ServerToClientPing;
+typename UpdatePlayerChannel = ?Int. ?PlayerState . UpdatePlayerChannel;
+typename InitiateGame = !Int . ?PlayerState . !(~ServerToClientPing) . End;
 
 fun random_colour_player(s: Float, v: Float) {
     var grc = 0.618033988749895;

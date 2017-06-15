@@ -6,24 +6,53 @@ open ServerLogic
 
 # keeps truck of all players, their states and channel on which the server
 # communicates with them
-fun players_manager(players, new_id) {
+fun players_manager(players, pids, new_id) {
+  fun broadcastMessage(users) {
+    switch(users) {
+      case [] -> ()
+      case user::users -> user.2 ! players ; broadcastMessage(users)
+    }
+  }
 
   receive {
-    case Update(player_id, player) ->
-      players_manager(dictUpdate(player_id, player, players), new_id)
-    case Add(player_id:Int, player:PlayerState) ->
+    case Update(player_id, player, pid) ->
+      players_manager(dictUpdate(player_id, player, players), pids, new_id)
+    case Add(player_id:Int, player:PlayerState, ping_channel) ->
       debug("leaving add");
-      players_manager(((player_id, player))::players, new_id)
+      players_manager(((player_id, player))::players,
+                      ((player_id, ping_channel))::pids, new_id)
     case GeneratePlayerId(pid) ->
       print("In generate");
       pid ! new_id;
-      players_manager(players, new_id+1)
+      players_manager(players, pids, new_id+1)
+    case BroadcastPlayersState() ->
+      if (players <> []) { broadcastMessage(pids); () } else ();
+      players_manager(players, pids, new_id)
   }
 }
 
-fun handle_pings(channel:UpdatePlayerChannel) {
-  var (x, channel) = receive(channel);
-  handle_pings(send([x], channel));
+fun clientSendHandler(channel:ServerToClientPing) {
+  receive {
+    case x -> clientSendHandler(send(x, channel))
+  }
+}
+
+# repeatedly sends up-to-date players' state to all users
+fun server_sender_ping(manager, prev_time) {
+  var curr_time = serverTime();
+  if (curr_time - prev_time > 5) {
+    debug("broadcast");
+    manager ! BroadcastPlayersState();
+    server_sender_ping(manager, curr_time)
+  } else
+    server_sender_ping(manager, prev_time)
+}
+
+fun server_rec_ping(recChannel:UpdatePlayerChannel) {
+  var (player_id, recChannel) = receive(recChannel);
+  var (player:PlayerState, recChannel) = receive(recChannel);
+  # update overall game state_node
+ server_rec_ping(recChannel)
 }
 
 fun setup(s:InitiateGame, manager) {
@@ -45,8 +74,19 @@ fun setup(s:InitiateGame, manager) {
   #  does not use pure client-side functions and can bu run on server).
   var (player_state:PlayerState, s) = receive(s);
   debug("received player's state");
-  manager ! Add(player_id, player_state);
-  var _ = spawn { handle_pings(s) };
+
+  # Generate a channel for sending regualar messages from server to client.
+  var serverToClientSendEnd:ServerToClientPing = linFork(
+    linfun (serverToClientRecvEnd:(~ServerToClientPing)) {
+      clientHandler(serverToClientRecvEnd, s)
+    });
+
+  # Fork off client send handler
+  var clientSendHandlerPid =
+    spawn { clientSendHandler(serverToClientSendEnd) };
+
+  # add new player to the manager
+  manager ! Add(player_id, player_state, clientSendHandlerPid);
   ()
 }
 
@@ -59,10 +99,12 @@ fun client_acceptor(ap, manager) {
 fun main() {
   var clientAP = new();
 
-  var gameManager = spawn { players_manager([], 1) };
+  var gameManager = spawn { players_manager([], [], 1) };
   var acc = spawn { client_acceptor(clientAP, gameManager) };
   var server_time = serverTime();
   debug("got server_time");
+  # var _ = spawn { server_sender_ping(gameManager, server_time) };
+  #debug("starting");
   addRoute("/", fun (_, _) { MainAppClient.mainPage(clientAP) } );
   addStaticRoute("/css", "css", [("css", "text/css")]);
   serveWebsockets();

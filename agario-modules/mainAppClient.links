@@ -56,7 +56,8 @@ fun draw_game_loop(player_id) client {
 }
 
 fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
-                        gameHandler, prev_time) {
+                        gameHandler, prev_time) client {
+  print("prev_time: "^^intToString(prev_time));
   var curr_time = getTime(event);
   if (curr_time - prev_time > 50) {
     # Get player id and state from the main loop and send them over to server.
@@ -102,9 +103,8 @@ fun initialize(player_name:String, ap) client {
     var gameHandler =
        spawnClient { main_game_loop(player_id, drawHandler, init_game)};
 
-    var serverHandler = spawnClient { server_handler_loop(update_channel,
+    var _ = spawnClient { server_handler_loop(update_channel,
                                       gameHandler, getTime(event)) };
-
 
     jsSetOnEvent(getNodeById("container"), "mousemove", on_mousemove, true);
 

@@ -12,7 +12,6 @@ fun on_mousemove(e) {
 }
 # regualarly gets position of the cursor and sends it to the main_game_loop
 fun cursor_loop(gameHandler, prev_time:Int) client {
-  debug("in cursor_loop");
   var curr_time = getTime(event);
   if (curr_time - prev_time > 150) {
     var cursor = Cursor(
@@ -58,26 +57,23 @@ fun draw_game_loop(player_id) client {
 
 fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
                         gameHandler, prev_time) client {
-  print("prev_time: "^^intToString(prev_time));
-  #var curr_time = getTime(event);
-  #if (curr_time - prev_time > 50) {
-    # Get player id and state from the main loop and send them over to server.
-    # The server then replies with up to date info for all players
-    # Update main game loop with new player states.
+  # Get player id and state from the main loop and send them over to server.
+  # The server then replies with up to date info for all players
+  # Update main game loop with new player states.
   var (player_id, player_state_maybe) =
     spawnWait { gameHandler ! GetState(self()); receive { case x -> x }};
-  print("got player_state");
   if (isJust(player_state_maybe)) {
-    print("is just");
     var player_state = fromJust(player_state_maybe);
+    print("length: "^^intToString(length(player_state.blobs)));
+    var pos = lsHead(player_state.blobs).split_pos;
+    print("new position: "^^floatToString(pos.1));
     var update_channel = send((player_id, player_state), update_channel);
     var (players:([(Int, PlayerState)]), update_channel) =
       receive(update_channel);
     gameHandler ! UpdatePlayers(players);
-    sleep(10);
+    sleep(1);
     server_handler_loop(update_channel:(~UpdatePlayerChannel), gameHandler, prev_time)
   } else {
-    debug("is nothing");
     # If a player wasn't found, ignore.
     server_handler_loop(update_channel, gameHandler, prev_time)
   }
@@ -89,14 +85,12 @@ fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
 
 fun initialize(player_name:String, ap) client {
   fun client_setup(s) {
-    debug("starting client setup");
     replaceNode(<div id="container" tabindex="1">
                     <canvas id="{canvas1}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
                     <canvas id="{canvas2}" height="{itos(screenHeight)}" width="{itos(screenWidth)}"/>
                 </div>,
                 getNodeById("container"));
     var (player_id, s) = receive(s);
-    debug("received player id: "^^intToString(player_id));
 
     var init_game:GameState = initial_game_state(player_name, player_id);
     var player_state:PlayerState = lsHead(init_game.players).2;
@@ -118,9 +112,7 @@ fun initialize(player_name:String, ap) client {
 
     ()
   }
-  debug("start client init");
   var s = request(ap);
-  debug("ap requested");
   var _ = spawnClient { client_setup(s) };
   ()
 }

@@ -1,8 +1,19 @@
-fun dictUpdate(key, value, dict) {
+open Logic
+
+fun dictUpdate(key:Int, value:PlayerState, dict) {
   switch(dict) {
     case [] -> []
-    case (k,v)::xs ->
-      if (k == key) (key, value)::xs
-      else (k,v)::dictUpdate(key, value, dict)
+    case (k,v:PlayerState)::xs ->
+      if (k == key) {
+        print("found key of:"^^intToString(k));
+        print("no of blobs: "^^intToString(length(v.blobs)));
+        print("no of new blobs: "^^intToString(length(value.blobs)));
+        var first_new = hd(value.blobs).split_pos;
+        var first =hd(v.blobs).split_pos;
+        # print("got heads");
+        # print("original position: "^^floatToString(first.1)); # ^^", "^^floatToString(first.y));
+        # print("new position: "^^floatToString(first_new.1)^^", "^^floatToString(first_new.2));
+        (key, value)::xs
+      } else (k,v)::dictUpdate(key, value, dict)
   }
 }

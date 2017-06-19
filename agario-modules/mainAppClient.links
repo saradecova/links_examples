@@ -13,7 +13,7 @@ fun on_mousemove(e) {
 # regualarly gets position of the cursor and sends it to the main_game_loop
 fun cursor_loop(gameHandler, prev_time:Int) client {
   var curr_time = getTime(event);
-  if (curr_time - prev_time > 150) {
+  if (curr_time - prev_time > 50) {
     var cursor = Cursor(
       switch(get_int("cursor_x")) { case Just(x) -> x
                                     case Nothing -> gameWidth/2 },
@@ -65,13 +65,16 @@ fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
   if (isJust(player_state_maybe)) {
     var player_state = fromJust(player_state_maybe);
     var update_channel = send((player_id, player_state), update_channel);
+    print("sending info");
     var (players:([(Int, PlayerState)]), update_channel) =
       receive(update_channel);
+    print("new players: "^^intToString(length(players)));
     gameHandler ! UpdatePlayers(players);
-    sleep(1);
+    sleep(5);
     server_handler_loop(update_channel:(~UpdatePlayerChannel), gameHandler, prev_time)
   } else {
     # If a player wasn't found, ignore.
+    print("player not found");
     server_handler_loop(update_channel, gameHandler, prev_time)
   }
 }

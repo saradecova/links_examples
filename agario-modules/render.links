@@ -80,8 +80,8 @@ fun draw(player_id, state: GameState) {
         var blob = hd(player.blobs);
         var cells = lsZip(food_state.pos, food_state.colour);
         lsMapIgnore(fun(cell) {
-                        draw_circle(((cell.1).1 -. blob.x) *. scale +. x_offset,
-                                    ((cell.1).2 -. blob.y) *. scale +. y_offset,
+                        draw_circle(((cell.1).1 -. intToFloat(blob.x)) *. scale +. x_offset,
+                                    ((cell.1).2 -. intToFloat(blob.y)) *. scale +. y_offset,
                                     food_radius, 1.0, cell.2, "grey", scale)
                     }, cells)
     }
@@ -106,8 +106,8 @@ fun draw(player_id, state: GameState) {
                             }, curr_player.blobs));
                     } else {
                         ignore(map(fun(curr_blob) {
-                                var draw_x = (curr_blob.x -. blob.x) *. scale +. x_offset;
-                                var draw_y = (curr_blob.y -. blob.y) *. scale +. y_offset;
+                                var draw_x = (curr_blob.x -. intToFloat(blob.x)) *. scale +. x_offset;
+                                var draw_y = (curr_blob.y -. intToFloat(blob.y)) *. scale +. y_offset;
                                 draw_circle(draw_x, draw_y,
                                             player_radius(curr_blob.mass), 3.0,
                                             curr_player.colour.1, curr_player.colour.2, scale);
@@ -128,7 +128,7 @@ fun draw(player_id, state: GameState) {
             fromJust(player_maybe)
         else
             highest_mass_player((name="", colour=("",""),
-                                 blobs=[(x=1000.0, y=1000.0, mass=0, split_pos=(-.1.0,-.1.0))]): PlayerState, state.players);
+                                 blobs=[(x=1000, y=1000, mass=0, split_pos=(-.1.0,-.1.0))]): PlayerState, state.players);
     var scale = get_scale(player);
     var (player_x, player_y) = centre_of_mass(player.blobs);
 

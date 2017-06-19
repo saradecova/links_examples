@@ -23,19 +23,15 @@ fun players_manager(players, new_id) {
 fun handle_pings(channel:UpdatePlayerChannel, manager) {
   var (x, channel) = receive(channel);
   var player_id = x.1;
-  print("recieved player info from player: "^^intToString(player_id));
+  # print("received request from "^^intToString(player_id));
   var player_state:PlayerState = x.2;
   var players = spawnWait { manager ! Update(player_id, player_state, self());
                             receive { case x -> x }};
+  # print("sending: "^^intToString(length(players))^^" players to "^^intToString(player_id)^^".");
   handle_pings(send(players, channel), manager);
 }
 
 fun setup(s:InitiateGame, manager) {
-  fun clientHandler(serverToClientRecvEnd, initGameChannel) {
-    var _ = send(serverToClientRecvEnd, initGameChannel);
-    ()
-  }
-
   # send new player id.
   var player_id = spawnWait { manager ! GeneratePlayerId(self());
                               receive { case n -> n }};

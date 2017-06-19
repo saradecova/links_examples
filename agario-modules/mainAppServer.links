@@ -21,16 +21,16 @@ fun players_manager(players, new_id) {
 }
 
 fun handle_pings(channel:UpdatePlayerChannel, manager) {
-  debug("handling pings");
+  print("handling pings");
   var (x, channel) = receive(channel);
-  debug("recieved player info");
+  print("recieved player info");
   var player_id = x.1;
-  debug("player_id: "^^intToString(player_id));
+  print("player_id: "^^intToString(player_id));
   var player_state:PlayerState = x.2;
-  debug("extracted player_state");
+  print("extracted player_state");
   var players = spawnWait { manager ! Update(player_id, player_state, self());
                             receive { case x -> x }};
-  debug("got players for player "^^intToString(x.1));
+  print("got players for player "^^intToString(x.1));
   handle_pings(send(players, channel), manager);
 }
 
@@ -43,7 +43,7 @@ fun setup(s:InitiateGame, manager) {
   # send new player id.
   var player_id = spawnWait { manager ! GeneratePlayerId(self());
                               receive { case n -> n }};
-  debug("got player id: "^^intToString(player_id));
+  print("got player id: "^^intToString(player_id));
   var s = send(player_id, s);
 
   #  Get client's initial state. (is same for every client so should be

@@ -64,9 +64,6 @@ fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
     spawnWait { gameHandler ! GetState(self()); receive { case x -> x }};
   if (isJust(player_state_maybe)) {
     var player_state = fromJust(player_state_maybe);
-    print("length: "^^intToString(length(player_state.blobs)));
-    var pos = lsHead(player_state.blobs).split_pos;
-    print("new position: "^^floatToString(pos.1));
     var update_channel = send((player_id, player_state), update_channel);
     var (players:([(Int, PlayerState)]), update_channel) =
       receive(update_channel);
@@ -77,10 +74,6 @@ fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
     # If a player wasn't found, ignore.
     server_handler_loop(update_channel, gameHandler, prev_time)
   }
-  #} else {
-#    sleep(25);
-#    server_handler_loop(update_channel, gameHandler, prev_time)
-#  }
 }
 
 fun initialize(player_name:String, ap) client {

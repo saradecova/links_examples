@@ -33,7 +33,7 @@ fun main_game_loop(player_id, drawHandler, game_state) client {
   receive {
     case Navigate(cursor_input:Input) ->
        var game_state_new = update_logic(game_state, player_id, cursor_input);
-       var in_game = isJust(lsDictLookup(player_id, game_state.players));
+       var in_game = isJust(lsDictLookup(player_id, game_state_new.players));
        drawHandler ! Draw(in_game, game_state_new);
        main_game_loop(player_id, drawHandler, game_state_new)
     case UpdatePlayers(new_players) ->
@@ -64,18 +64,18 @@ fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
     spawnWait { gameHandler ! GetState(self()); receive { case x -> x }};
   if (isJust(player_state_maybe)) {
     var player_state = fromJust(player_state_maybe);
-    var update_channel = send((player_id, player_state), update_channel);
-    print("sending info");
+    var update_channel = send((player_id, player_state), select Update update_channel);
     var (players:([(Int, PlayerState)]), update_channel) =
       receive(update_channel);
-    print("new players: "^^intToString(length(players)));
     gameHandler ! UpdatePlayers(players);
-    sleep(5);
-    server_handler_loop(update_channel:(~UpdatePlayerChannel), gameHandler, prev_time)
+    sleep(2);
+    server_handler_loop(update_channel:(~UpdatePlayerChannel), gameHandler, prev_time);
+    ()
   } else {
-    # If a player wasn't found, ignore.
-    print("player not found");
-    server_handler_loop(update_channel, gameHandler, prev_time)
+    ignore(send(player_id, select DeletePlayer update_channel));
+    print("DIEEEEED");
+    redirect("/");
+    ()
   }
 }
 

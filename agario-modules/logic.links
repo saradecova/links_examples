@@ -50,7 +50,8 @@ typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
 typename GameState = (screen: ScreenState, players: [(Int, PlayerState)], food: FoodState);
 
-typename UpdatePlayerChannel = ?(Int,PlayerState) . ![(Int, PlayerState)] . UpdatePlayerChannel;
+typename UpdatePlayerChannel = [&| Update : ?(Int,PlayerState) . ![(Int, PlayerState)] . UpdatePlayerChannel,
+                                   DeletePlayer : ?Int . End |&];
 typename InitiateGame = !Int . ?PlayerState . UpdatePlayerChannel;
 
 fun random_colour_player(s: Float, v: Float) {
@@ -264,27 +265,34 @@ fun update_food(player_id, state: GameState) {
 
 fun update_players(player_id, player:PlayerState, players) {
     fun blob_eat_blob(reverse, curr_blob)(other_blob) {
-        if (itof(curr_blob.mass) *. 1.0 > itof(other_blob.mass))
-            if (euclidean_dist((intToFloat(curr_blob.x), intToFloat(curr_blob.y)), (intToFloat(other_blob.x), intToFloat(other_blob.y))) < player_radius(curr_blob.mass))
-                not(reverse)
-            else
-                reverse
+        if (itof(curr_blob.mass) *. 1.0 > itof(other_blob.mass) &&
+            (euclidean_dist((itof(curr_blob.x), itof(curr_blob.y)), (itof(other_blob.x), itof(other_blob.y))) < player_radius(curr_blob.mass)))
+          not(reverse)
         else
-            reverse
+          reverse
+    }
+
+    fun eaten(my_blob)(other_blob) {
+      (itof(other_blob.mass) *. 1.0 > itof(my_blob.mass)) &&
+      (euclidean_dist((itof(my_blob.x), itof(my_blob.y)), (itof(other_blob.x), itof(other_blob.y))) < player_radius(other_blob.mass))
     }
 
     fun update_curr_blob(blob:Blob, players) {
         switch (lsEmpty(players)) {
-            case true -> (blob, players)
+            case true -> (blob, players, false)
             case false -> {
                 if (not(player_id == lsHead(players).1)) {
                     var other_player = lsHead(players).2;
                     var eaten_blobs_mass = sum(map(fun(x) {x.mass}, filter(blob_eat_blob(false, blob), other_player.blobs)));
                     var other_player_blobs_p = filter(blob_eat_blob(true, blob), other_player.blobs);
                     var blob_p = (blob with mass=blob.mass+eaten_blobs_mass);
-                    var (next_blob, next_players) = update_curr_blob(blob_p, lsTail(players));
+                    var is_eaten = not(empty(filter(eaten(blob), other_player.blobs)));
+                    var (next_blob, next_players, is_eaten_2) = update_curr_blob(blob_p, lsTail(players));
                     var other_player_p = (other_player with blobs=other_player_blobs_p):PlayerState;
-                    (next_blob, lsCons((lsHead(players).1, other_player_p), next_players))
+                    if (is_eaten || is_eaten_2)
+                      (next_blob, next_players, true)
+                    else
+                      (next_blob, lsCons((lsHead(players).1, other_player_p), next_players), false)
                 } else
                     update_curr_blob(blob, lsTail(players))
             }
@@ -295,16 +303,19 @@ fun update_players(player_id, player:PlayerState, players) {
         switch(empty(blobs)) {
             case true -> ([], players)
             case false -> {
-                var (blob_p, players_p) = update_curr_blob(hd(blobs), players);
+                var (blob_p, players_p, is_eaten) = update_curr_blob(hd(blobs), players);
                 var (next_blobs, next_players) = update_curr_player(tl(blobs), players_p);
-                (blob_p::next_blobs, next_players)
+                if (is_eaten) {
+                  print("UPDATAED EATEN BLOB");
+                  (next_blobs, next_players)
+                } else (blob_p::next_blobs, next_players)
             }
         }
     }
 
     var (blobs_p, players_p) = update_curr_player(player.blobs, players);
-    var players_p = lsFilter(fun(x) {length((x.2).blobs) > 0}, players_p);
-    lsDictAdd(player_id, (player with blobs=blobs_p): PlayerState, players_p)
+    var players_p = lsDictAdd(player_id, (player with blobs=blobs_p): PlayerState, players_p);
+    lsFilter(fun(x) {length((x.2).blobs) > 0}, players_p)
 }
 
 fun update_logic(state: GameState, player_id: Int, in_event: Input) {
@@ -325,6 +336,7 @@ fun update_logic(state: GameState, player_id: Int, in_event: Input) {
                 (state_new with players=players): GameState
             }
         }
-    }    else
-        state
+    } else {
+      state
+    }
 }

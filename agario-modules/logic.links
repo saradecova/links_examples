@@ -49,12 +49,12 @@ typename PlayerState = (name: String, colour: (String, String), blobs: [Blob]);
 typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
 typename GameState = (screen: ScreenState, players: [(Int, PlayerState)], food: FoodState);
-typename KillBlob = (player_id:Int, blob_id:Int);
-typename PlayerUpdateInfo = (id: Int, state: PlayerState, kill_blobs: [KillBlob]);
+typename KillBlob = (player_id:Int, blob_id:Int, mass_inc:Int);
+typename PlayerUpdateInfo = (state: PlayerState, kill_blobs: [KillBlob]);
 
 typename ClientChannel = [&| UpdatePlayers: !(Int,Maybe(PlayerState),[KillBlob],[KillBlob]) . ?([(Int,PlayerState)]).End,
                               Navigate: ?Input.End |&];
-typename UpdatePlayerChannel = [&| Update : ?PlayerUpdateInfo . ![(Int, PlayerState)] . UpdatePlayerChannel,
+typename UpdatePlayerChannel = [&| Update : ![KillBlob] . ?PlayerUpdateInfo . ![(Int, PlayerState)] . UpdatePlayerChannel,
                                    Died :?(Int, [KillBlob]) . End |&];
 typename InitiateGame = !Int . ?PlayerState . UpdatePlayerChannel;
 
@@ -289,13 +289,13 @@ fun update_players(player_id, player:PlayerState, players) {
                     var other_player = lsHead(players).2;
                     # get eaten blobs and their commulative mass
                     var eaten_blobs = filter(blob_eat_blob(false, blob), other_player.blobs);
-                    var eaten_blobs_ids = map(fun(x) {(player_id=lsHead(players).1, blob_id=x.id)}, eaten_blobs);
+                    var eaten_blobs_ids = map(fun(x) {(player_id=lsHead(players).1, blob_id=x.id, mass_inc=0)}, eaten_blobs);
                     var eaten_blobs_mass = sum(map(fun(x) {x.mass}, eaten_blobs));
 
                     # update blob
                     var blob_p = (blob with mass=blob.mass+eaten_blobs_mass);
                     # id(s) of blobs that potentially ate player's blob in form (player_id, blob_id)
-                    var killer_blobs = map(fun(x) {(player_id=lsHead(players).1, blob_id=x.id)},
+                    var killer_blobs = map(fun(x) {(player_id=lsHead(players).1, blob_id=x.id, mass_inc=blob_p.mass)},
                                            filter(eaten(blob), other_player.blobs));
                     # get resolts for the remaining blobs
                     var (next_blob, next_players, eaten_blobs_tl, killer_blobs_tl) = update_curr_blob(blob_p, lsTail(players));
@@ -317,7 +317,7 @@ fun update_players(player_id, player:PlayerState, players) {
             case false -> {
                 var (blob_p, players_p, eaten_blobs, killer_blobs) = update_curr_blob(hd(blobs), players);
                 var (next_blobs, next_players, eaten_blobs_tl, killer_blobs_tl) = update_curr_player(tl(blobs), players_p);
-                var blobs_p = if (empty(killer_blobs)) blob_p::next_blobs else {print("deleting blob"); next_blobs};
+                var blobs_p = if (empty(killer_blobs)) blob_p::next_blobs else next_blobs;
                 (blobs_p, next_players, concat([eaten_blobs, eaten_blobs_tl]), concat([killer_blobs, killer_blobs_tl]))
             }
         }
@@ -325,11 +325,7 @@ fun update_players(player_id, player:PlayerState, players) {
 
     var (blobs_p, players_p, eaten_blobs, killer_blobs) = update_curr_player(player.blobs, players);
     var players_p = lsDictAdd(player_id, (player with blobs=blobs_p): PlayerState, players_p);
-    print("logic: players size = "^^intToString(lsLength(players_p)));
     var players_p = lsFilter(fun(x) {length((x.2).blobs) > 0}, players_p);
-    print("logic: players size atfer filter = "^^intToString(lsLength(players_p)));
-    print("logic: eaten_blobs = "^^intToString(length(eaten_blobs)));
-    print("logic: killer_blobs = "^^intToString(length(killer_blobs)));
     (players_p, eaten_blobs, killer_blobs)
 }
 

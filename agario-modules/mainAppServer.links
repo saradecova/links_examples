@@ -8,10 +8,8 @@ open ServerLogic
 # communicates with them
 fun players_manager(players, kill_blobs, new_id) {
   receive {
-    case Update(info:PlayerUpdateInfo, pid) ->
-      var new_players = dictUpdatePlayer(info.id, info.state, players);
-      if (empty(info.kill_blobs)) () else print("got killer with players: "^^intToString(lsLength(new_players)));
-      # var new_players = dictUpdateMass(info.kill_blobs, players);
+    case Update(player_id, info:PlayerUpdateInfo, pid) ->
+      var new_players = dictUpdatePlayer(player_id, info.state, players);
       pid ! new_players;
       players_manager(new_players, kill_blobs, new_id)
     case Add(player_id:Int, player:PlayerState) ->
@@ -22,24 +20,29 @@ fun players_manager(players, kill_blobs, new_id) {
     case DeletePlayer(player_id) ->
       var new_players = filter(fun(x) {x.1<>player_id}, players);
       players_manager(new_players, kill_blobs, new_id);
-    case InflatePlayers(kill_blobs_new) ->
+    case InflatePlayers(kill_blobs_new:[KillBlob]) ->
       players_manager(players, concat([kill_blobs_new, kill_blobs]), new_id)
+    case GetInflatePlayers(player_id, pid) ->
+      pid ! filter(fun(x){x.player_id==player_id}, kill_blobs);
+      var to_inflate_new = filter(fun(x){x.player_id<>player_id}, kill_blobs);
+      players_manager(players, to_inflate_new, new_id)
   }
 }
 
-fun handle_pings(channel:UpdatePlayerChannel, manager) {
+fun handle_pings(player_id, channel:UpdatePlayerChannel, manager) {
   offer(channel) {
     case Update(channel) ->
+      var to_inflate = spawnWait { manager ! GetInflatePlayers(player_id, self());
+                                   receive { case x -> x }};
+      var channel = send(to_inflate, channel);
       var (player_info:PlayerUpdateInfo, channel) = receive(channel);
-      var players = spawnWait { manager ! Update(player_info, self());
+      var players = spawnWait { manager ! Update(player_id, player_info, self());
                                 receive { case x -> x }};
-      handle_pings(send(players, channel), manager);
+      handle_pings(player_id, send(players, channel), manager)
     case Died(channel) ->
       var (died_info, channel) = receive(channel);
-      # delete user
-      manager! DeletePlayer(died_info.1);
-      # Inflate players
-      manager ! InflatePlayers(died_info.2);
+      manager ! InflatePlayers(died_info.2:[KillBlob]);
+      manager ! DeletePlayer(died_info.1);
   }
 }
 
@@ -54,7 +57,7 @@ fun setup(s:InitiateGame, manager) {
   #  does not use pure client-side functions and can bu run on server).
   var (player_state:PlayerState, s) = receive(s);
   manager ! Add(player_id, player_state);
-  var _ = spawn { handle_pings(s, manager) };
+  var _ = spawn { handle_pings(player_id, s, manager) };
   ()
 }
 

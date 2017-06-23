@@ -37,7 +37,6 @@ fun main_game_loop(ap:AP(ClientChannel), player_id, drawHandler, game_state, eat
   var s:ClientChannel = accept(ap);
   offer(s) {
     case UpdatePlayers(s) ->
-      print("in update");
       var player_state_maybe = lsDictLookup(player_id, game_state.players);
       var s = send((player_id, player_state_maybe, eaten_blobs, kill_blobs), s);
       var (new_players, _) = receive(s);
@@ -45,7 +44,6 @@ fun main_game_loop(ap:AP(ClientChannel), player_id, drawHandler, game_state, eat
       main_game_loop(ap, player_id, drawHandler, game_state_new, [], [])
     case Navigate(s) ->
       var (cursor_input:Input, _) = receive(s);
-      print("back in navigate with "^^intToString(lsLength(game_state.players))^^" players");
        if (inGame(player_id, game_state)) {
          var (game_state_new, eaten_blobs_new, kill_blobs_new) =
            update_logic(game_state, player_id, cursor_input);
@@ -69,6 +67,22 @@ fun draw_game_loop(player_id) client {
 
 fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
                         game_ap:AP(ClientChannel), prev_time) client {
+  fun inflateRec(blob_id, mass_inc, blobs) {
+    switch(blobs) {
+      case [] -> []
+      case (x:Blob)::xs ->
+        if (x.id == blob_id) ((x with mass=x.mass+mass_inc))::xs
+        else x::inflateRec(blob_id, mass_inc, xs)
+    }
+  }
+
+  fun inflateBlobs(to_inflate, blobs) {
+    switch(to_inflate) {
+      case [] -> blobs
+      case x::xs -> inflateBlobs(xs, inflateRec(x.blob_id, x.mass_inc, blobs))
+    }
+  }
+
   # Get player id and state from the main loop and send them over to server.
   # The server then replies with up to date info for all players
   # Update main game loop with new player states.
@@ -80,17 +94,18 @@ fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
   # check if eaten by a different player
   if (isJust(player_state_maybe)) {
     var player_state = fromJust(player_state_maybe);
-    var update_channel = send((id=player_id, state=player_state, kill_blobs=kill_blobs):PlayerUpdateInfo,
-                              select Update update_channel);
+    var (to_inflate, update_channel) = receive(select Update update_channel);
+    var player_state = (player_state with blobs=inflateBlobs(to_inflate, player_state.blobs));
+    var update_channel = send((state=player_state, kill_blobs=kill_blobs):PlayerUpdateInfo,
+                              update_channel);
     var (players:([(Int, PlayerState)]), update_channel) = receive(update_channel);
     ignore(send(ls(players), channel));
     sleep(1);
     server_handler_loop(update_channel:(~UpdatePlayerChannel), game_ap, prev_time)
   } else {
-    print("DIEED");
     ignore(send(ls([]), channel));
     ignore(send((player_id, kill_blobs), select Died update_channel));
-    # redirect("/");
+    redirect("/");
   }
 }
 

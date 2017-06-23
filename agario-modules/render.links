@@ -126,9 +126,11 @@ fun draw(player_id, state: GameState) {
     var player =
         if (isJust(player_maybe))
             fromJust(player_maybe)
-        else
+        else {
+            print("drawing biggest player reminding with "^^intToString(lsLength(state.players))^^" players.");
             highest_mass_player((name="", colour=("",""),
-                                 blobs=[(x=1000, y=1000, mass=0, split_pos=(-.1.0,-.1.0))]): PlayerState, state.players);
+                                 blobs=[(id=1, x=1000, y=1000, mass=0, split_pos=(-.1.0,-.1.0))]): PlayerState, state.players)};
+    print("got player");
     var scale = get_scale(player);
     var (player_x, player_y) = centre_of_mass(player.blobs);
 

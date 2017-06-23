@@ -44,14 +44,18 @@ fun get_int(name: String) {
 ########################################################################
 
 typename Input = [| Key: (Int, Int) | Cursor: (Int, Int) |];
-typename Blob = (x: Int, y: Int, mass: Int, split_pos: (Float, Float));
+typename Blob = (id: Int, x: Int, y: Int, mass: Int, split_pos: (Float, Float));
 typename PlayerState = (name: String, colour: (String, String), blobs: [Blob]);
 typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
 typename GameState = (screen: ScreenState, players: [(Int, PlayerState)], food: FoodState);
+typename KillBlob = (player_id:Int, blob_id:Int);
+typename PlayerUpdateInfo = (id: Int, state: PlayerState, kill_blobs: [KillBlob]);
 
-typename UpdatePlayerChannel = [&| Update : ?(Int,PlayerState) . ![(Int, PlayerState)] . UpdatePlayerChannel,
-                                   DeletePlayer : ?Int . End |&];
+typename ClientChannel = [&| UpdatePlayers: !(Int,Maybe(PlayerState),[KillBlob],[KillBlob]) . ?([(Int,PlayerState)]).End,
+                              Navigate: ?Input.End |&];
+typename UpdatePlayerChannel = [&| Update : ?PlayerUpdateInfo . ![(Int, PlayerState)] . UpdatePlayerChannel,
+                                   Died :?(Int, [KillBlob]) . End |&];
 typename InitiateGame = !Int . ?PlayerState . UpdatePlayerChannel;
 
 fun random_colour_player(s: Float, v: Float) {
@@ -123,7 +127,7 @@ fun initial_game_state(player_name, player_id) {
     }
     var screen_state = (x=0.0, y=0.0, scale=0.0): ScreenState;
     var player_state = (name=player_name, colour=random_colour_player(0.95, 0.7),
-                        blobs=[(x=1000, y=1000, mass=base_player_mass,
+                        blobs=[(id=1, x=1000, y=1000, mass=base_player_mass,
                         split_pos=(-.1.0,-.1.0))]):PlayerState;
     var players = lsDictAdd(player_id, player_state, lsNilF());
     var food_state = initialize_food(gameWidth, gameHeight, base_food_count);
@@ -151,11 +155,10 @@ fun split_player(player: PlayerState, cursor: (Int, Int)) {
         var (x_com, y_com) = centre_of_mass(player.blobs);
         var split_pos = (x_com -. x_offset +. itof(cursor.1), y_com -. y_offset +. itof(cursor.2));
         var non_split_blobs = filter(fun(x) {x.mass < 40}, player.blobs);
-        var dup_blobs = map(fun(blob){ (x=blob.x, y=blob.y, mass=blob.mass/2, split_pos=split_pos): Blob}, split_blobs);
-        var original_blobs = map(fun(blob){ (x=blob.x, y=blob.y, split_pos=blob.split_pos,
-                                             mass = if (even(blob.mass)) blob.mass/2 else blob.mass/2 + 1): Blob}, split_blobs);
-        (name=player.name, colour=player.colour,
-         blobs=concat([non_split_blobs, original_blobs, dup_blobs])): PlayerState
+        var blob_count = length(player.blobs);
+        var dup_blobs = map(fun(blob){ (id=blob_count+blob.id, x=blob.x, y=blob.y, mass=blob.mass/2, split_pos=split_pos): Blob}, split_blobs);
+        var original_blobs = map(fun(blob){ (blob with mass= if (even(blob.mass)) blob.mass/2 else blob.mass/2 + 1): Blob}, split_blobs);
+        (player with blobs=concat([non_split_blobs, original_blobs, dup_blobs])): PlayerState
     }
 }
 
@@ -192,7 +195,7 @@ fun compute_player_position(player, cursor) {
                     var dir_y = if (delta_y_norm > 0.0) -.1.0 else 1.0;
 
                     if (delta_x_norm == 0.0 && delta_y_norm == 0.0)
-                        ((x=blob.x, y=blob.y, mass=blob.mass, split_pos=blob.split_pos) :: compute_blob_position(tl(blobs)))
+                        blob :: compute_blob_position(tl(blobs))
                     else {
                         # compute velocity components depending on ratio of deltas so that total velocity remains constant
                         var delta_ratio = if (delta_y_norm == 0.0)
@@ -213,10 +216,10 @@ fun compute_player_position(player, cursor) {
                         var x_new = if (x_p < 0.0) 0.0 else if (x_p > itof(gameWidth)) itof(gameWidth) else x_p;
                         var y_new = if (y_p < 0.0) 0.0 else if (y_p > itof(gameHeight)) itof(gameHeight) else y_p;
 
-                        ((x=floatToInt(x_new), y=floatToInt(y_new), mass=blob.mass, split_pos=blob.split_pos) :: compute_blob_position(tl(blobs)))
+                        ((blob with x=ftoi(x_new), y=ftoi(y_new)) :: compute_blob_position(tl(blobs)))
                     }
                 } else {
-                    ((x=floatToInt((blob.split_pos).1), y=floatToInt((blob.split_pos).2), mass=blob.mass, split_pos=(-.1.0,-.1.0)) :: compute_blob_position(tl(blobs)))
+                    ((blob with x=ftoi((blob.split_pos).1), y=ftoi((blob.split_pos).2), split_pos=(-.1.0,-.1.0)) :: compute_blob_position(tl(blobs)))
                 }
             }
         }
@@ -266,8 +269,9 @@ fun update_food(player_id, state: GameState) {
 fun update_players(player_id, player:PlayerState, players) {
     fun blob_eat_blob(reverse, curr_blob)(other_blob) {
         if (itof(curr_blob.mass) *. 1.0 > itof(other_blob.mass) &&
-            (euclidean_dist((itof(curr_blob.x), itof(curr_blob.y)), (itof(other_blob.x), itof(other_blob.y))) < player_radius(curr_blob.mass)))
-          not(reverse)
+            (euclidean_dist((itof(curr_blob.x), itof(curr_blob.y)), (itof(other_blob.x), itof(other_blob.y))) < player_radius(curr_blob.mass))) {
+              not(reverse)
+            }
         else
           reverse
     }
@@ -279,20 +283,28 @@ fun update_players(player_id, player:PlayerState, players) {
 
     fun update_curr_blob(blob:Blob, players) {
         switch (lsEmpty(players)) {
-            case true -> (blob, players, false)
+            case true -> (blob, players, [], [])
             case false -> {
                 if (not(player_id == lsHead(players).1)) {
                     var other_player = lsHead(players).2;
-                    var eaten_blobs_mass = sum(map(fun(x) {x.mass}, filter(blob_eat_blob(false, blob), other_player.blobs)));
-                    var other_player_blobs_p = filter(blob_eat_blob(true, blob), other_player.blobs);
+                    # get eaten blobs and their commulative mass
+                    var eaten_blobs = filter(blob_eat_blob(false, blob), other_player.blobs);
+                    var eaten_blobs_ids = map(fun(x) {(player_id=lsHead(players).1, blob_id=x.id)}, eaten_blobs);
+                    var eaten_blobs_mass = sum(map(fun(x) {x.mass}, eaten_blobs));
+
+                    # update blob
                     var blob_p = (blob with mass=blob.mass+eaten_blobs_mass);
-                    var is_eaten = not(empty(filter(eaten(blob), other_player.blobs)));
-                    var (next_blob, next_players, is_eaten_2) = update_curr_blob(blob_p, lsTail(players));
+                    # id(s) of blobs that potentially ate player's blob in form (player_id, blob_id)
+                    var killer_blobs = map(fun(x) {(player_id=lsHead(players).1, blob_id=x.id)},
+                                           filter(eaten(blob), other_player.blobs));
+                    # get resolts for the remaining blobs
+                    var (next_blob, next_players, eaten_blobs_tl, killer_blobs_tl) = update_curr_blob(blob_p, lsTail(players));
+
+                    # update other player
+                    var other_player_blobs_p = filter(blob_eat_blob(true, blob), other_player.blobs);
                     var other_player_p = (other_player with blobs=other_player_blobs_p):PlayerState;
-                    if (is_eaten || is_eaten_2)
-                      (next_blob, next_players, true)
-                    else
-                      (next_blob, lsCons((lsHead(players).1, other_player_p), next_players), false)
+
+                    (next_blob, lsCons((lsHead(players).1, other_player_p), next_players), concat([eaten_blobs_ids, eaten_blobs_tl]), concat([killer_blobs, killer_blobs_tl]))
                 } else
                     update_curr_blob(blob, lsTail(players))
             }
@@ -301,21 +313,24 @@ fun update_players(player_id, player:PlayerState, players) {
 
     fun update_curr_player(blobs, players) {
         switch(empty(blobs)) {
-            case true -> ([], players)
+            case true -> ([], players, [], [])
             case false -> {
-                var (blob_p, players_p, is_eaten) = update_curr_blob(hd(blobs), players);
-                var (next_blobs, next_players) = update_curr_player(tl(blobs), players_p);
-                if (is_eaten) {
-                  print("UPDATAED EATEN BLOB");
-                  (next_blobs, next_players)
-                } else (blob_p::next_blobs, next_players)
+                var (blob_p, players_p, eaten_blobs, killer_blobs) = update_curr_blob(hd(blobs), players);
+                var (next_blobs, next_players, eaten_blobs_tl, killer_blobs_tl) = update_curr_player(tl(blobs), players_p);
+                var blobs_p = if (empty(killer_blobs)) blob_p::next_blobs else {print("deleting blob"); next_blobs};
+                (blobs_p, next_players, concat([eaten_blobs, eaten_blobs_tl]), concat([killer_blobs, killer_blobs_tl]))
             }
         }
     }
 
-    var (blobs_p, players_p) = update_curr_player(player.blobs, players);
+    var (blobs_p, players_p, eaten_blobs, killer_blobs) = update_curr_player(player.blobs, players);
     var players_p = lsDictAdd(player_id, (player with blobs=blobs_p): PlayerState, players_p);
-    lsFilter(fun(x) {length((x.2).blobs) > 0}, players_p)
+    print("logic: players size = "^^intToString(lsLength(players_p)));
+    var players_p = lsFilter(fun(x) {length((x.2).blobs) > 0}, players_p);
+    print("logic: players size atfer filter = "^^intToString(lsLength(players_p)));
+    print("logic: eaten_blobs = "^^intToString(length(eaten_blobs)));
+    print("logic: killer_blobs = "^^intToString(length(killer_blobs)));
+    (players_p, eaten_blobs, killer_blobs)
 }
 
 fun update_logic(state: GameState, player_id: Int, in_event: Input) {
@@ -327,16 +342,16 @@ fun update_logic(state: GameState, player_id: Int, in_event: Input) {
             case Cursor(x,y) -> {
                 var blobs = player_state.blobs;
                 var player_state_p = compute_player_position(player_state, (x,y));
-                var players = update_players(player_id, player_state_p, state_new.players);
-                (state_new with players=players):GameState
+                var (players, eaten_blobs, killer_blobs) = update_players(player_id, player_state_p, state_new.players);
+                ((state_new with players=players):GameState, eaten_blobs, killer_blobs)
             }
             case Key(x,y) -> {
                 var player_state_p = split_player(player_state, (x, y));
-                var players = update_players(player_id, player_state_p, state_new.players);
-                (state_new with players=players): GameState
+                var (players, eaten_blobs, killer_blobs) = update_players(player_id, player_state_p, state_new.players);
+                ((state_new with players=players): GameState, [], [])
             }
         }
     } else {
-      state
+      (state, [], [])
     }
 }

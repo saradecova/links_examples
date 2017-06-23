@@ -6,37 +6,40 @@ open ServerLogic
 
 # keeps truck of all players, their states and channel on which the server
 # communicates with them
-fun players_manager(players, new_id) {
+fun players_manager(players, kill_blobs, new_id) {
   receive {
-    case Update(player_id, player, pid) ->
-      var new_players = dictUpdate(player_id, player, players);
+    case Update(info:PlayerUpdateInfo, pid) ->
+      var new_players = dictUpdatePlayer(info.id, info.state, players);
+      if (empty(info.kill_blobs)) () else print("got killer with players: "^^intToString(lsLength(new_players)));
+      # var new_players = dictUpdateMass(info.kill_blobs, players);
       pid ! new_players;
-      players_manager(new_players, new_id)
+      players_manager(new_players, kill_blobs, new_id)
     case Add(player_id:Int, player:PlayerState) ->
-      players_manager(((player_id, player))::players, new_id)
+      players_manager(((player_id, player))::players, kill_blobs, new_id)
     case GeneratePlayerId(pid) ->
       pid ! new_id;
-      players_manager(players, new_id+1)
+      players_manager(players, kill_blobs, new_id+1)
     case DeletePlayer(player_id) ->
       var new_players = filter(fun(x) {x.1<>player_id}, players);
-      players_manager(new_players, new_id);
+      players_manager(new_players, kill_blobs, new_id);
+    case InflatePlayers(kill_blobs_new) ->
+      players_manager(players, concat([kill_blobs_new, kill_blobs]), new_id)
   }
 }
 
 fun handle_pings(channel:UpdatePlayerChannel, manager) {
   offer(channel) {
     case Update(channel) ->
-      var (x, channel) = receive(channel);
-      var player_id = x.1;
-      var player_state:PlayerState = x.2;
-      var players = spawnWait { manager ! Update(player_id, player_state, self());
+      var (player_info:PlayerUpdateInfo, channel) = receive(channel);
+      var players = spawnWait { manager ! Update(player_info, self());
                                 receive { case x -> x }};
       handle_pings(send(players, channel), manager);
-      ()
-    case DeletePlayer(channel) ->
-      var (player_id, channel) = receive(channel);
-      manager ! DeletePlayer(player_id);
-      ()
+    case Died(channel) ->
+      var (died_info, channel) = receive(channel);
+      # delete user
+      manager! DeletePlayer(died_info.1);
+      # Inflate players
+      manager ! InflatePlayers(died_info.2);
   }
 }
 
@@ -63,8 +66,7 @@ fun client_acceptor(ap, manager) {
 
 fun main() {
   var clientAP = new();
-
-  var gameManager = spawn { players_manager([], 1) };
+  var gameManager = spawn { players_manager([], [], 1) };
   var acc = spawn { client_acceptor(clientAP, gameManager) };
   var server_time = serverTime();
   addRoute("/", fun (_, _) { MainAppClient.mainPage(clientAP) } );

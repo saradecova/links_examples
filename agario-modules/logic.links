@@ -49,13 +49,13 @@ typename PlayerState = (name: String, colour: (String, String), blobs: [Blob]);
 typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
 typename GameState = (screen: ScreenState, players: [(Int, PlayerState)], food: FoodState);
-typename KillBlob = (player_id:Int, blob_id:Int, mass_inc:Int);
-typename PlayerUpdateInfo = (state: PlayerState, kill_blobs: [KillBlob]);
+typename BlobIds = (player_id:Int, blob_id:Int, mass_inc:Int);
+typename PlayerUpdateInfo = (state: PlayerState, kill_blobs: [BlobIds], eaten_blobs: [BlobIds]);
 
-typename ClientChannel = [&| UpdatePlayers: !(Int,Maybe(PlayerState),[KillBlob],[KillBlob]) . ?([(Int,PlayerState)]).End,
+typename ClientChannel = [&| UpdatePlayers: !(Int,Maybe(PlayerState),[BlobIds],[BlobIds]) . ?([(Int,PlayerState)]).End,
                               Navigate: ?Input.End |&];
-typename UpdatePlayerChannel = [&| Update : ![KillBlob] . ?PlayerUpdateInfo . ![(Int, PlayerState)] . UpdatePlayerChannel,
-                                   Died :?(Int, [KillBlob]) . End |&];
+typename UpdatePlayerChannel = [&| Update : ![BlobIds]. ![BlobIds] . ?PlayerUpdateInfo . ![(Int, PlayerState)] . UpdatePlayerChannel,
+                                   Died :?(Int, [BlobIds]) . End |&];
 typename InitiateGame = !Int . ?PlayerState . UpdatePlayerChannel;
 
 fun random_colour_player(s: Float, v: Float) {

@@ -67,6 +67,7 @@ fun draw_game_loop(player_id) client {
 
 fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
                         game_ap:AP(ClientChannel), prev_time) client {
+  # increase mass of a blob that ate other player's blob with "blob_id"
   fun inflateRec(blob_id, mass_inc, blobs) {
     switch(blobs) {
       case [] -> []
@@ -76,10 +77,19 @@ fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
     }
   }
 
+  # increase mass of all blobs that have eaten otehr player's blobs
   fun inflateBlobs(to_inflate, blobs) {
     switch(to_inflate) {
       case [] -> blobs
       case x::xs -> inflateBlobs(xs, inflateRec(x.blob_id, x.mass_inc, blobs))
+    }
+  }
+
+  # remove all blobs that have been eaten by other players
+  fun notEatenBlobs(eaten, blobs) {
+    switch(eaten) {
+      case [] -> blobs
+      case x::xs -> notEatenBlobs(xs, filter(fun(blob) {blob.id<>x.blob_id}, blobs))
     }
   }
 
@@ -96,7 +106,11 @@ fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
     var player_state = fromJust(player_state_maybe);
     var (to_inflate, update_channel) = receive(select Update update_channel);
     var player_state = (player_state with blobs=inflateBlobs(to_inflate, player_state.blobs));
-    var update_channel = send((state=player_state, kill_blobs=kill_blobs):PlayerUpdateInfo,
+
+    var (eaten, update_channel) = receive(update_channel);
+    var player_state = (player_state with blobs=notEatenBlobs(eaten, player_state.blobs));
+
+    var update_channel = send((state=player_state, kill_blobs=kill_blobs, eaten_blobs=eaten_blobs):PlayerUpdateInfo,
                               update_channel);
     var (players:([(Int, PlayerState)]), update_channel) = receive(update_channel);
     ignore(send(ls(players), channel));

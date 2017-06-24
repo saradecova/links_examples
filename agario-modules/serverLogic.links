@@ -25,3 +25,15 @@ fun updatePlayerMass(blobs_ids, player) {
 fun dictUpdateMass(blobs_ids, dict) {
   map(fun(x) {updatePlayerMass(blobs_ids, x)}, dict)
 }
+
+fun updatePlayerBlobs(blobs, players:[(Int, PlayerState)]) {
+  map(fun(x) {var blobs_new = notEatenBlobs(blobs, x.2.blobs, x.1);
+              (x.1, (x.2 with blobs=blobs_new)) }, players)
+}
+
+fun notEatenBlobs(eaten, player_blobs, player_id) {
+  switch(eaten) {
+    case [] -> player_blobs
+    case x::xs -> notEatenBlobs(xs, filter(fun(blob) {blob.id<>x.blob_id || player_id<>x.player_id}, player_blobs), player_id)
+  }
+}

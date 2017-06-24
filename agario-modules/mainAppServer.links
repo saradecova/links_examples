@@ -10,6 +10,7 @@ fun players_manager(players, kill_blobs, eaten_blobs, new_id) {
   receive {
     case Update(player_id, info:PlayerUpdateInfo, pid) ->
       var new_players = dictUpdatePlayer(player_id, info.state, players);
+      var new_players = updatePlayerBlobs(info.eaten_blobs, new_players);
       pid ! new_players;
       players_manager(new_players, concat([info.kill_blobs, kill_blobs]),
                       concat([info.eaten_blobs, eaten_blobs]), new_id)
@@ -41,7 +42,7 @@ fun handle_pings(player_id, channel:UpdatePlayerChannel, manager) {
                     receive { case x -> x }};
       var channel = send(to_inflate, channel);
       var channel = send(eaten, channel);
-      var (player_info:PlayerUpdateInfo, channel) = receive(channel);
+      var (player_info:PlayerUpdateInfo, channel) = receive(channel); # handle new eaten blobs (need to be done at the server!!!)
       var players = spawnWait { manager ! Update(player_id, player_info, self());
                                 receive { case x -> x }};
       handle_pings(player_id, send(players, channel), manager)

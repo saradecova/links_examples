@@ -44,7 +44,7 @@ fun get_int(name: String) {
 ########################################################################
 
 typename Input = [| Key: (Int, Int) | Cursor: (Int, Int) |];
-typename Blob = (id: Int, x: Int, y: Int, mass: Int, split_pos: (Float, Float));
+typename Blob = (id: Int, x: Float, y: Float, mass: Int, split_pos: (Float, Float));
 typename PlayerState = (name: String, colour: (String, String), blobs: [Blob]);
 typename ScreenState = (x: Float, y: Float, scale: Float);
 typename FoodState = (pos: [(Float, Float)], colour: [String]);
@@ -79,10 +79,10 @@ fun euclidean_dist((x1, y1), (x2, y2)) {
 
 fun centre_of_mass(blobs: [Blob]) {
     if (length(blobs) == 1)
-        (intToFloat(hd(blobs).x), intToFloat(hd(blobs).y))
+        (hd(blobs).x, hd(blobs).y)
     else {
-        var x_com = fold_left(fun(a,b) {a +. intToFloat(b.x)}, 0.0, blobs) /. itof(length(blobs));
-        var y_com = fold_left(fun(a,b) {a +. intToFloat(b.y)}, 0.0, blobs) /. itof(length(blobs));
+        var x_com = fold_left(fun(a,b) {a +. b.x}, 0.0, blobs) /. itof(length(blobs));
+        var y_com = fold_left(fun(a,b) {a +. b.y}, 0.0, blobs) /. itof(length(blobs));
         (x_com, y_com)
     }
 }
@@ -127,7 +127,7 @@ fun initial_game_state(player_name, player_id) {
     }
     var screen_state = (x=0.0, y=0.0, scale=0.0): ScreenState;
     var player_state = (name=player_name, colour=random_colour_player(0.95, 0.7),
-                        blobs=[(id=1, x=1000, y=1000, mass=base_player_mass,
+                        blobs=[(id=1, x=1000.0, y=1000.0, mass=base_player_mass,
                         split_pos=(-.1.0,-.1.0))]):PlayerState;
     var players = lsDictAdd(player_id, player_state, lsNilF());
     var food_state = initialize_food(gameWidth, gameHeight, base_food_count);
@@ -169,7 +169,7 @@ fun compute_player_position(player, cursor) {
             case true -> false
             case false -> {
                 var other_blob = hd(blobs);
-                var dist = euclidean_dist((intToFloat(curr_blob.x), intToFloat(curr_blob.y)), (intToFloat(other_blob.x), intToFloat(other_blob.y)));
+                var dist = euclidean_dist((curr_blob.x, curr_blob.y), (other_blob.x, other_blob.y));
                 if (dist == 0.0 && curr_blob.mass == other_blob.mass)
                     blob_overlap(curr_blob, tl(blobs))
                 else if (dist < player_radius(curr_blob.mass) +. player_radius(other_blob.mass))
@@ -189,8 +189,8 @@ fun compute_player_position(player, cursor) {
                 var blob = hd(blobs);
                 if (blob.split_pos == (-.1.0,-.1.0)) {
                     # normalised (wrt screen dimensions) difference in dtsance between player and cursor position
-                    var delta_x_norm = 2.0 *. (x_offset -. x_com +. intToFloat(blob.x) -. itof(cursor.1)) /. screenWidthFloat;
-                    var delta_y_norm = 2.0 *. (y_offset -. y_com +. intToFloat(blob.y) -. itof(cursor.2)) /. screenHeightFloat;
+                    var delta_x_norm = 2.0 *. (x_offset -. x_com +. blob.x -. itof(cursor.1)) /. screenWidthFloat;
+                    var delta_y_norm = 2.0 *. (y_offset -. y_com +. blob.y -. itof(cursor.2)) /. screenHeightFloat;
                     var dir_x = if (delta_x_norm > 0.0) -.1.0 else 1.0;
                     var dir_y = if (delta_y_norm > 0.0) -.1.0 else 1.0;
 
@@ -205,21 +205,21 @@ fun compute_player_position(player, cursor) {
                         var delta_y_p = sqrt( (v ^. 2.0) /. (delta_ratio ^. 2.0 +. 1.0) );
                         var delta_x_p = delta_y_p *. delta_ratio;
 
-                        var x_p = intToFloat(blob.x) +. dir_x *. delta_x_p;
-                        var y_p = intToFloat(blob.y) +. dir_y *. delta_y_p;
+                        var x_p = blob.x +. dir_x *. delta_x_p;
+                        var y_p = blob.y +. dir_y *. delta_y_p;
                         # don't update if blob touches other blobs
                         var (x_p, y_p) = if (blob_overlap(blob, blobs))
-                            (intToFloat(blob.x) +. 0.5 *. dir_x *. delta_x_p, intToFloat(blob.y) +. 0.5 *. dir_y *. delta_y_p)
+                            (blob.x +. 0.5 *. dir_x *. delta_x_p, blob.y +. 0.5 *. dir_y *. delta_y_p)
                         else (x_p, y_p);
 
                         # don't update if blob is at borders
                         var x_new = if (x_p < 0.0) 0.0 else if (x_p > itof(gameWidth)) itof(gameWidth) else x_p;
                         var y_new = if (y_p < 0.0) 0.0 else if (y_p > itof(gameHeight)) itof(gameHeight) else y_p;
 
-                        ((blob with x=ftoi(x_new), y=ftoi(y_new)) :: compute_blob_position(tl(blobs)))
+                        ((blob with x=x_new, y=y_new) :: compute_blob_position(tl(blobs)))
                     }
                 } else {
-                    ((blob with x=ftoi((blob.split_pos).1), y=ftoi((blob.split_pos).2), split_pos=(-.1.0,-.1.0)) :: compute_blob_position(tl(blobs)))
+                    ((blob with x=(blob.split_pos).1, y=(blob.split_pos).2, split_pos=(-.1.0,-.1.0)) :: compute_blob_position(tl(blobs)))
                 }
             }
         }
@@ -236,7 +236,7 @@ fun update_food(player_id, state: GameState) {
             case true -> (blobs, zipped_food)
             case false -> {
                 var blob = hd(blobs);
-                var blob_pos = (intToFloat(blob.x), intToFloat(blob.y));
+                var blob_pos = (blob.x, blob.y);
                 var zipped_food_p = lsFilter( fun(x) { euclidean_dist(x.1, blob_pos) > player_radius(blob.mass) }, zipped_food);
                 var blob_p = (blob with mass=blob.mass - lsLength(zipped_food_p) + lsLength(zipped_food)): Blob;
                 var (next_blobs, next_food) = update_blob_food(tl(blobs), zipped_food_p);
@@ -269,7 +269,7 @@ fun update_food(player_id, state: GameState) {
 fun update_players(player_id, player:PlayerState, players) {
     fun blob_eat_blob(reverse, curr_blob)(other_blob) {
         if (itof(curr_blob.mass) *. 1.0 > itof(other_blob.mass) &&
-            (euclidean_dist((itof(curr_blob.x), itof(curr_blob.y)), (itof(other_blob.x), itof(other_blob.y))) < player_radius(curr_blob.mass))) {
+            (euclidean_dist((curr_blob.x, curr_blob.y), (other_blob.x, other_blob.y)) < player_radius(curr_blob.mass))) {
               not(reverse)
             }
         else
@@ -278,7 +278,7 @@ fun update_players(player_id, player:PlayerState, players) {
 
     fun eaten(my_blob)(other_blob) {
       (itof(other_blob.mass) *. 1.0 > itof(my_blob.mass)) &&
-      (euclidean_dist((itof(my_blob.x), itof(my_blob.y)), (itof(other_blob.x), itof(other_blob.y))) < player_radius(other_blob.mass))
+      (euclidean_dist((my_blob.x, my_blob.y), (other_blob.x, other_blob.y)) < player_radius(other_blob.mass))
     }
 
     fun update_curr_blob(blob:Blob, players) {

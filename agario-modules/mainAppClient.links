@@ -93,33 +93,38 @@ fun server_handler_loop(update_channel:(~UpdatePlayerChannel),
     }
   }
 
-  # Get player id and state from the main loop and send them over to server.
-  # The server then replies with up to date info for all players
-  # Update main game loop with new player states.
-  var channel:(~ClientChannel) = request(game_ap);
-  var channel = select UpdatePlayers channel;
-  var ((player_id, player_state_maybe, eaten_blobs, kill_blobs), channel) =
-    receive(channel);
+  var curr_time = getTime(event);
+  if (curr_time - prev_time < 100)
+    server_handler_loop(update_channel, game_ap, prev_time)
+  else {
 
-  # check if eaten by a different player
-  if (isJust(player_state_maybe)) {
-    var player_state = fromJust(player_state_maybe);
-    var (to_inflate, update_channel) = receive(select Update update_channel);
-    var player_state = (player_state with blobs=inflateBlobs(to_inflate, player_state.blobs));
+    # Get player id and state from the main loop and send them over to server.
+    # The server then replies with up to date info for all players
+    # Update main game loop with new player states.
+    var channel:(~ClientChannel) = request(game_ap);
+    var channel = select UpdatePlayers channel;
+    var ((player_id, player_state_maybe, eaten_blobs, kill_blobs), channel) =
+      receive(channel);
 
-    var (eaten, update_channel) = receive(update_channel);
-    var player_state = (player_state with blobs=notEatenBlobs(eaten, player_state.blobs));
+    # check if eaten by a different player
+    if (isJust(player_state_maybe)) {
+      var player_state = fromJust(player_state_maybe);
+      var (to_inflate, update_channel) = receive(select Update update_channel);
+      var player_state = (player_state with blobs=inflateBlobs(to_inflate, player_state.blobs));
 
-    var update_channel = send((state=player_state, kill_blobs=kill_blobs, eaten_blobs=eaten_blobs):PlayerUpdateInfo,
-                              update_channel);
-    var (players:([(Int, PlayerState)]), update_channel) = receive(update_channel);
-    ignore(send(ls(players), channel));
-    sleep(1);
-    server_handler_loop(update_channel:(~UpdatePlayerChannel), game_ap, prev_time)
-  } else {
-    ignore(send(ls([]), channel));
-    ignore(send((player_id, kill_blobs), select Died update_channel));
-    redirect("/");
+      var (eaten, update_channel) = receive(update_channel);
+      var player_state = (player_state with blobs=notEatenBlobs(eaten, player_state.blobs));
+
+      var update_channel = send((state=player_state, kill_blobs=kill_blobs, eaten_blobs=eaten_blobs):PlayerUpdateInfo,
+                                update_channel);
+      var (players:([(Int, PlayerState)]), update_channel) = receive(update_channel);
+      ignore(send(ls(players), channel));
+      server_handler_loop(update_channel:(~UpdatePlayerChannel), game_ap, curr_time)
+    } else {
+      ignore(send(ls([]), channel));
+      ignore(send((player_id, kill_blobs), select Died update_channel));
+      redirect("/");
+    }
   }
 }
 
